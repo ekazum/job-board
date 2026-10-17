@@ -1,0 +1,154 @@
+"""Schema behaviour (sql/schema.sql): WAL mode, de-duplication, the outcome/status rule, enum coverage."""
+
+import sqlite3
+from contextlib import closing
+
+import pytest
+
+from job_board.database import Database
+from job_board.enums.outcome import Outcome
+from job_board.enums.platform import Platform
+from job_board.enums.source import Source
+from job_board.enums.status import Status
+
+INSERT_POSTING = (
+    "INSERT INTO postings (source, external_id, company, title, url, status, outcome) "
+    "VALUES (:source, :external_id, :company, :title, :url, :status, :outcome) "
+    "ON CONFLICT (source, external_id) DO NOTHING"
+)
+POSTING: dict[str, str | None] = {
+    "source": "manual",
+    "external_id": "https://example.com/jobs/1",
+    "company": "Example",
+    "title": "Backend Engineer",
+    "url": "https://example.com/jobs/1",
+    "status": "new",
+    "outcome": None,
+}
+INSERT_COMPANY = "INSERT INTO companies (name, platform) VALUES (:name, :platform)"
+
+
+def _insert_posting(connection: sqlite3.Connection, **overrides: str | None) -> int:
+    """Insert a posting, skipping duplicates the way the app does; returns the number of rows inserted."""
+    return connection.execute(INSERT_POSTING, {**POSTING, **overrides}).rowcount
+
+
+def test_insert_or_ignore_would_hide_check_violations(database: Database) -> None:
+    """Guards the choice of ON CONFLICT DO NOTHING: OR IGNORE drops an invalid row without an error."""
+    with closing(database.connect()) as connection:
+        cursor = connection.execute(
+            "INSERT OR IGNORE INTO postings (source, external_id, company, title, url, status) "
+            "VALUES ('manual', 'x', 'Example', 'Engineer', 'x', 'archived')"
+        )
+        assert cursor.rowcount == 0
+
+
+def test_initialize_creates_folder_and_uses_wal(database: Database) -> None:
+    assert database.path.is_file()
+    with closing(database.connect()) as connection:
+        assert connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+
+
+def test_initialize_is_idempotent(database: Database) -> None:
+    database.initialize()
+    with closing(database.connect()) as connection:
+        tables = {row["name"] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert {"companies", "postings"} <= tables
+
+
+def test_new_posting_gets_defaults(database: Database) -> None:
+    with closing(database.connect()) as connection:
+        connection.execute(
+            "INSERT INTO postings (source, external_id, company, title, url) "
+            "VALUES ('manual', 'x', 'Example', 'Engineer', 'x')"
+        )
+        row = connection.execute("SELECT status, outcome, text, note, created_at FROM postings WHERE external_id = 'x'").fetchone()
+    assert (row["status"], row["outcome"], row["text"], row["note"]) == ("new", None, "", "")
+    assert row["created_at"].endswith("Z")
+
+
+def test_duplicate_source_and_external_id_is_ignored(database: Database) -> None:
+    with closing(database.connect()) as connection:
+        assert _insert_posting(connection) == 1
+        connection.execute("UPDATE postings SET status = 'applied' WHERE external_id = :external_id", POSTING)
+        assert _insert_posting(connection, title="Changed title") == 0
+        row = connection.execute("SELECT COUNT(*) AS n, MAX(status) AS status, MAX(title) AS title FROM postings").fetchone()
+    assert (row["n"], row["status"], row["title"]) == (1, "applied", "Backend Engineer")
+
+
+def test_same_external_id_from_another_source_is_a_new_row(database: Database) -> None:
+    with closing(database.connect()) as connection:
+        _insert_posting(connection)
+        assert _insert_posting(connection, source="greenhouse") == 1
+
+
+def test_outcome_rejected_unless_closed(database: Database) -> None:
+    with closing(database.connect()) as connection:
+        with pytest.raises(sqlite3.IntegrityError):
+            _insert_posting(connection, status="applied", outcome="rejected")
+
+
+def test_reopening_a_closed_posting_requires_clearing_outcome(database: Database) -> None:
+    with closing(database.connect()) as connection:
+        _insert_posting(connection, status="closed", outcome="rejected")
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute("UPDATE postings SET status = 'applied' WHERE external_id = :external_id", POSTING)
+        connection.execute("UPDATE postings SET status = 'applied', outcome = NULL WHERE external_id = :external_id", POSTING)
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [("status", "archived"), ("outcome", "ghosted"), ("source", "linkedin")],
+)
+def test_unknown_enum_values_rejected(database: Database, column: str, value: str) -> None:
+    overrides = {column: value, "status": "closed"} if column == "outcome" else {column: value}
+    with closing(database.connect()) as connection:
+        with pytest.raises(sqlite3.IntegrityError):
+            _insert_posting(connection, **overrides)
+
+
+# --- schema.sql lists enum values literally; these keep it in step with job_board/enums -------------------
+
+
+@pytest.mark.parametrize("status", list(Status))
+def test_schema_accepts_every_status(database: Database, status: Status) -> None:
+    outcome = Outcome.OFFER if status is Status.CLOSED else None
+    with closing(database.connect()) as connection:
+        assert _insert_posting(connection, status=status, outcome=outcome) == 1
+
+
+@pytest.mark.parametrize("outcome", list(Outcome))
+def test_schema_accepts_every_outcome_on_a_closed_posting(database: Database, outcome: Outcome) -> None:
+    with closing(database.connect()) as connection:
+        assert _insert_posting(connection, status=Status.CLOSED, outcome=outcome) == 1
+
+
+@pytest.mark.parametrize("source", list(Source))
+def test_schema_accepts_every_source(database: Database, source: Source) -> None:
+    with closing(database.connect()) as connection:
+        assert _insert_posting(connection, source=source) == 1
+
+
+@pytest.mark.parametrize("platform", list(Platform))
+def test_schema_accepts_every_platform(database: Database, platform: Platform) -> None:
+    with closing(database.connect()) as connection:
+        connection.execute(INSERT_COMPANY, {"name": "Acme", "platform": platform})
+
+
+# --- companies --------------------------------------------------------------------------------------------
+
+
+def test_company_name_is_unique_case_insensitive(database: Database) -> None:
+    with closing(database.connect()) as connection:
+        connection.execute(INSERT_COMPANY, {"name": "Acme", "platform": None})
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(INSERT_COMPANY, {"name": "acme", "platform": None})
+
+
+def test_company_platform_starts_null_and_rejects_unknown(database: Database) -> None:
+    with closing(database.connect()) as connection:
+        connection.execute("INSERT INTO companies (name) VALUES ('Acme')")
+        row = connection.execute("SELECT platform, verified, enabled FROM companies WHERE name = 'Acme'").fetchone()
+        assert (row["platform"], row["verified"], row["enabled"]) == (None, 0, 1)
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute("UPDATE companies SET platform = 'workday' WHERE name = 'Acme'")

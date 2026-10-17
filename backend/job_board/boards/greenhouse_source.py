@@ -1,0 +1,65 @@
+"""Greenhouse job board API."""
+
+import html
+from urllib.parse import quote
+
+from job_board.boards.board_source import BoardSource
+from job_board.boards.board_unavailable_error import BoardUnavailableError
+from job_board.boards.job_listing import JobListing
+from job_board.enums.platform import Platform
+from job_board.enums.source import Source
+from job_board.utils.html_text_parser import HtmlTextParser
+from job_board.utils.json_values import as_dict, as_id, as_list, as_str, dicts
+
+API_ROOT = "https://boards-api.greenhouse.io/v1/boards"
+
+
+class GreenhouseSource(BoardSource):
+    """boards-api.greenhouse.io/v1/boards/{slug}/jobs: {"jobs": [...]}; 404 for an unknown slug."""
+
+    @property
+    def platform(self) -> Platform:
+        """Greenhouse."""
+        return Platform.GREENHOUSE
+
+    @property
+    def source(self) -> Source:
+        """Greenhouse."""
+        return Source.GREENHOUSE
+
+    def fetch_jobs(self, slug: str) -> list[JobListing] | None:
+        """All jobs with descriptions (content=true; several MB for large boards)."""
+        jobs = self._jobs_array(f"{API_ROOT}/{quote(slug)}/jobs?content=true")
+        if jobs is None:
+            return None
+        listings = (self._listing(job) for job in dicts(jobs))
+        return [listing for listing in listings if listing is not None]
+
+    def probe(self, slug: str) -> bool:
+        """Board exists: the same endpoint without content, about 20x smaller."""
+        return self._jobs_array(f"{API_ROOT}/{quote(slug)}/jobs") is not None
+
+    def board_name(self, slug: str) -> str | None:
+        """GET /v1/boards/{slug} -> {"name": "Acme", ...}; None when it cannot be read."""
+        try:
+            data = as_dict(self._get_json(f"{API_ROOT}/{quote(slug)}"))
+        except BoardUnavailableError:
+            return None
+        name = None if data is None else as_str(data.get("name")).strip()
+        return name or None
+
+    def _jobs_array(self, url: str) -> list[object] | None:
+        """The "jobs" array of a board response, or None when the board does not exist."""
+        data = as_dict(self._get_json(url))
+        return None if data is None else as_list(data.get("jobs"))
+
+    @staticmethod
+    def _listing(job: dict[str, object]) -> JobListing | None:
+        """One job; content is entity-encoded HTML ("&lt;p&gt;"), so it is unescaped before tag stripping."""
+        external_id = as_id(job.get("id"))
+        title = as_str(job.get("title")).strip()
+        url = as_str(job.get("absolute_url"))
+        if not (external_id and title and url):
+            return None
+        text = HtmlTextParser.to_text(html.unescape(as_str(job.get("content"))))
+        return JobListing(external_id=external_id, title=title, url=url, text=text)

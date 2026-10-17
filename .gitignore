@@ -1,0 +1,18 @@
+# Database (includes WAL side files job_board.db-wal / -shm)
+data/
+
+# Python
+__pycache__/
+*.egg-info/
+.pytest_cache/
+
+# Frontend
+node_modules/
+frontend/dist/
+
+# Secrets (deferred: Groq key, Telegram token)
+.env
+
+# PyCharm per-user state
+.idea/workspace.xml
+.idea/shelf/

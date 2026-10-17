@@ -1,0 +1,21 @@
+{
+  "name": "job-board",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "typecheck": "tsc",
+    "gen:types": "openapi-typescript http://localhost:8000/openapi.json -o src/types.ts --default-non-nullable false"
+  },
+  "dependencies": {
+    "sortablejs": "^1.15.7"
+  },
+  "devDependencies": {
+    "@types/sortablejs": "^1.15.9",
+    "openapi-typescript": "^7.13.0",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.4"
+  }
+}
