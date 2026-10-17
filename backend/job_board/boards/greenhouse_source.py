@@ -3,6 +3,7 @@
 import html
 from urllib.parse import quote
 
+from job_board.boards.board_ref import BoardRef
 from job_board.boards.board_source import BoardSource
 from job_board.boards.board_unavailable_error import BoardUnavailableError
 from job_board.boards.job_listing import JobListing
@@ -27,30 +28,30 @@ class GreenhouseSource(BoardSource):
         """Greenhouse."""
         return Source.GREENHOUSE
 
-    def fetch_jobs(self, slug: str) -> list[JobListing] | None:
+    async def fetch_jobs(self, board: BoardRef) -> list[JobListing] | None:
         """All jobs with descriptions (content=true; several MB for large boards)."""
-        jobs = self._jobs_array(f"{API_ROOT}/{quote(slug)}/jobs?content=true")
+        jobs = await self._jobs_array(f"{API_ROOT}/{quote(board.slug)}/jobs?content=true")
         if jobs is None:
             return None
         listings = (self._listing(job) for job in dicts(jobs))
         return [listing for listing in listings if listing is not None]
 
-    def probe(self, slug: str) -> bool:
+    async def probe(self, board: BoardRef) -> bool:
         """Board exists: the same endpoint without content, about 20x smaller."""
-        return self._jobs_array(f"{API_ROOT}/{quote(slug)}/jobs") is not None
+        return await self._jobs_array(f"{API_ROOT}/{quote(board.slug)}/jobs") is not None
 
-    def board_name(self, slug: str) -> str | None:
+    async def board_name(self, board: BoardRef) -> str | None:
         """GET /v1/boards/{slug} -> {"name": "Acme", ...}; None when it cannot be read."""
         try:
-            data = as_dict(self._get_json(f"{API_ROOT}/{quote(slug)}"))
+            data = as_dict(await self._get_json(f"{API_ROOT}/{quote(board.slug)}"))
         except BoardUnavailableError:
             return None
         name = None if data is None else as_str(data.get("name")).strip()
         return name or None
 
-    def _jobs_array(self, url: str) -> list[object] | None:
+    async def _jobs_array(self, url: str) -> list[object] | None:
         """The "jobs" array of a board response, or None when the board does not exist."""
-        data = as_dict(self._get_json(url))
+        data = as_dict(await self._get_json(url))
         return None if data is None else as_list(data.get("jobs"))
 
     @staticmethod

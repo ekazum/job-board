@@ -23,3 +23,4 @@ class Posting(BaseModel):
     outcome: Outcome | None
     note: str
     created_at: datetime
+    fit: int | None = None  # LLM fit score 0-10; None until the posting has been scored

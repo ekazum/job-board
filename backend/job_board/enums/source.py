@@ -10,4 +10,5 @@ class Source(StrEnum):
     LEVER = "lever"
     ASHBY = "ashby"
     COMEET = "comeet"
+    WORKDAY = "workday"
     MANUAL = "manual"

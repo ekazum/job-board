@@ -13,7 +13,7 @@ export interface paths {
         };
         /**
          * List Postings
-         * @description All postings, newest first.
+         * @description Postings matching the filter bar, newest first; without parameters, all of them.
          */
         get: operations["list_postings"];
         put?: never;
@@ -22,6 +22,26 @@ export interface paths {
          * @description Add a pasted posting (source manual, external_id = canonical URL). 201 when added, 200 when already there.
          */
         post: operations["create_posting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/postings/facets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Posting Facets
+         * @description Companies and sources for the filter bar, and each column's unfiltered total.
+         */
+        get: operations["posting_facets"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -63,8 +83,8 @@ export interface paths {
         put?: never;
         /**
          * Create Company
-         * @description Add a company (name, optional domain); Discover fills in the rest. 201 when added, 200 when the name
-         *     exists (any case), in which case the stored row is returned unchanged.
+         * @description Add a company (name, optional domain and careers_url); Discover fills in the rest. 201 when added, 200
+         *     when the name exists (any case), in which case the stored row is returned unchanged.
          */
         post: operations["create_company"];
         delete?: never;
@@ -88,7 +108,7 @@ export interface paths {
         head?: never;
         /**
          * Patch Company
-         * @description Enable or disable scanning for a company.
+         * @description Enable or disable scanning, and/or set or clear the careers page Discover fetches first.
          */
         patch: operations["patch_company"];
         trace?: never;
@@ -104,7 +124,7 @@ export interface paths {
         put?: never;
         /**
          * Run Discover
-         * @description Discover the careers platform of every company in config.yaml.
+         * @description Discover the careers platform of every company.
          */
         post: operations["run_discover"];
         delete?: never;
@@ -133,6 +153,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/llm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Llm Settings
+         * @description The active provider and model from config.yaml.
+         */
+        get: operations["get_llm_settings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/llm/provider": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set Llm Provider
+         * @description Switch llm.provider in config.yaml (comments and layout are kept); 422 for a provider not listed.
+         */
+        put: operations["set_llm_provider"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/llm/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Test Llm
+         * @description Send a tiny scoring prompt to the active provider; failures are reported in the result, not as HTTP errors.
+         */
+        post: operations["test_llm"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -140,6 +220,8 @@ export interface components {
         /**
          * Company
          * @description A company as stored in the companies table; platform is None until discovery has run.
+         *
+         *     last_error is the reason the latest discover or scan failed for this company, cleared when one succeeds.
          */
         Company: {
             /** Id */
@@ -159,50 +241,90 @@ export interface components {
             enabled: boolean;
             /** Last Checked */
             last_checked: string | null;
+            /** Last Error */
+            last_error: string | null;
         };
         /**
          * CompanyCreate
-         * @description A company added in the UI. With a domain it is included in the next Discover; discovery fills in
-         *     platform, slug and verified. The domain is stored bare ("https://www.Acme.com/x" -> "acme.com").
+         * @description A company added in the UI. With a domain it is included in the next Discover, which fetches careers_url first
+         *     when it is set. The domain is stored bare ("https://www.Acme.com/x" -> "acme.com").
          */
         CompanyCreate: {
             /** Name */
             name: string;
             /** Domain */
             domain?: string | null;
+            /** Careers Url */
+            careers_url?: string | null;
         };
         /**
          * CompanyPatch
          * @description Fields a client may change on a company; fields left out of the request stay as they are.
+         *     careers_url set to null or "" clears it.
          */
         CompanyPatch: {
             /** Enabled */
             enabled?: boolean | null;
-        };
-        /**
-         * DiscoverResult
-         * @description companies = verified + unverified + no_platform + len(issues).
-         *
-         *     verified: board API answered 200 with a jobs array. unverified: a board link was found on the careers
-         *     page but its API did not confirm it. no_platform: nothing found (stored as platform=none). issues:
-         *     companies skipped because a board could not be reached; their stored row is left as it was.
-         */
-        DiscoverResult: {
-            /** Companies */
-            companies: number;
-            /** Verified */
-            verified: number;
-            /** Unverified */
-            unverified: number;
-            /** No Platform */
-            no_platform: number;
-            /** Issues */
-            issues: components["schemas"]["RunIssue"][];
+            /** Careers Url */
+            careers_url?: string | null;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /**
+         * LlmProviderChoice
+         * @description The provider to write into config.yaml as llm.provider.
+         */
+        LlmProviderChoice: {
+            /** Provider */
+            provider: string;
+        };
+        /**
+         * LlmSettingsView
+         * @description The active provider and how it is reached; api_key_set tells whether its .env variable has a value
+         *     (the key itself is never sent to the browser).
+         */
+        LlmSettingsView: {
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Base Url */
+            base_url: string;
+            /** Api Key Env */
+            api_key_env: string;
+            /** Api Key Set */
+            api_key_set: boolean;
+            /** Concurrency */
+            concurrency: number;
+            /** Json Mode */
+            json_mode: boolean;
+            /** Threshold */
+            threshold: number;
+            /** Max Text Chars */
+            max_text_chars: number;
+            /** Providers */
+            providers: string[];
+        };
+        /**
+         * LlmTestResult
+         * @description One tiny scoring request: raw is the model's answer exactly as received; error is set when it failed.
+         */
+        LlmTestResult: {
+            /** Ok */
+            ok: boolean;
+            /** Provider */
+            provider: string;
+            /** Model */
+            model: string;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Raw */
+            raw: string;
+            /** Error */
+            error: string | null;
         };
         /**
          * Outcome
@@ -218,7 +340,7 @@ export interface components {
          *     a NULL platform in the database means discovery has not run yet.
          * @enum {string}
          */
-        Platform: "greenhouse" | "lever" | "ashby" | "comeet" | "none";
+        Platform: "greenhouse" | "lever" | "ashby" | "comeet" | "workday" | "none";
         /**
          * Posting
          * @description A job posting as stored in the postings table and returned by the API.
@@ -246,6 +368,8 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Fit */
+            fit?: number | null;
         };
         /**
          * PostingCreate
@@ -265,6 +389,20 @@ export interface components {
             text?: string;
         };
         /**
+         * PostingFacets
+         * @description companies and sources that have postings, and how many postings each status column holds unfiltered.
+         */
+        PostingFacets: {
+            /** Companies */
+            companies: string[];
+            /** Sources */
+            sources: components["schemas"]["Source"][];
+            /** Totals */
+            totals: {
+                [key: string]: number;
+            };
+        };
+        /**
          * PostingPatch
          * @description Fields a client may change on a posting; fields left out of the request stay as they are.
          *
@@ -278,38 +416,23 @@ export interface components {
             note?: string | null;
         };
         /**
-         * RunIssue
-         * @description One company that could not be processed; the run carries on with the others.
+         * RunSummary
+         * @description ok: companies processed; failed: companies whose error was saved to companies.last_error; duration_s: wall time.
          */
-        RunIssue: {
-            /** Company */
-            company: string;
-            /** Message */
-            message: string;
-        };
-        /**
-         * ScanResult
-         * @description companies: verified + enabled companies scanned. jobs_seen: jobs on their boards. matched: jobs that
-         *     passed the keyword filter. added: matched jobs that were new (the rest were already on the board).
-         */
-        ScanResult: {
-            /** Companies */
-            companies: number;
-            /** Jobs Seen */
-            jobs_seen: number;
-            /** Matched */
-            matched: number;
-            /** Added */
-            added: number;
-            /** Issues */
-            issues: components["schemas"]["RunIssue"][];
+        RunSummary: {
+            /** Ok */
+            ok: number;
+            /** Failed */
+            failed: number;
+            /** Duration S */
+            duration_s: number;
         };
         /**
          * Source
          * @description Where a posting came from: a scanned platform, or pasted by hand.
          * @enum {string}
          */
-        Source: "greenhouse" | "lever" | "ashby" | "comeet" | "manual";
+        Source: "greenhouse" | "lever" | "ashby" | "comeet" | "workday" | "manual";
         /**
          * Status
          * @description Board column a posting sits in.
@@ -340,7 +463,18 @@ export type $defs = Record<string, never>;
 export interface operations {
     list_postings: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description Case-insensitive substring of the title */
+                q?: string | null;
+                /** @description Only these companies (repeatable) */
+                company?: string[] | null;
+                /** @description Only these sources (repeatable) */
+                source?: components["schemas"]["Source"][] | null;
+                /** @description Fit at least this; unscored postings always pass */
+                min_fit?: number | null;
+                /** @description Match q in the description too */
+                in_text?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -354,6 +488,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Posting"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -396,6 +539,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    posting_facets: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PostingFacets"];
                 };
             };
         };
@@ -561,7 +724,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DiscoverResult"];
+                    "application/json": components["schemas"]["RunSummary"];
                 };
             };
             /** @description Another discover or scan run is in progress */
@@ -588,7 +751,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ScanResult"];
+                    "application/json": components["schemas"]["RunSummary"];
                 };
             };
             /** @description Another discover or scan run is in progress */
@@ -597,6 +760,79 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    get_llm_settings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmSettingsView"];
+                };
+            };
+        };
+    };
+    set_llm_provider: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LlmProviderChoice"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmSettingsView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    test_llm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LlmTestResult"];
+                };
             };
         };
     };

@@ -29,6 +29,7 @@ export class Board {
   private postings: Posting[] = [];
   private readonly lists = new Map<Status, HTMLElement>();
   private readonly counts = new Map<Status, HTMLElement>();
+  private totals: Record<Status, number> = { new: 0, applied: 0, interview: 0, closed: 0 };
   private readonly outcomeDialog: OutcomeDialog;
   private readonly callbacks: BoardCallbacks;
 
@@ -43,13 +44,25 @@ export class Board {
     this.render();
   }
 
-  /** Insert a new posting or replace an existing one, then redraw. */
+  /** Each column's unfiltered count, for the "shown / total" header. */
+  setTotals(totals: Readonly<Record<string, number>>): void {
+    for (const status of STATUSES) {
+      this.totals[status] = totals[status] ?? 0;
+    }
+    this.render();
+  }
+
+  /** Insert a new posting or replace an existing one (keeping the totals in step with a move), then redraw. */
   upsert(posting: Posting): void {
     const index = this.postings.findIndex((existing) => existing.id === posting.id);
-    if (index === -1) {
+    const previous = index === -1 ? undefined : this.postings[index];
+    if (previous === undefined) {
       this.postings.push(posting);
+      this.totals[posting.status] += 1;
     } else {
       this.postings[index] = posting;
+      this.totals[previous.status] -= 1;
+      this.totals[posting.status] += 1;
     }
     this.postings.sort(byNewest);
     this.render();
@@ -113,7 +126,8 @@ export class Board {
       this.lists.get(status)?.replaceChildren(...postings.map((posting) => this.card(posting)));
       const count = this.counts.get(status);
       if (count !== undefined) {
-        count.textContent = String(postings.length);
+        count.textContent = `${postings.length} / ${Math.max(this.totals[status], postings.length)}`;
+        count.title = "shown / total";
       }
     }
   }
@@ -128,6 +142,7 @@ export class Board {
         "div",
         { class: "card-meta" },
         posting.source === "manual" ? null : el("span", { class: "badge" }, posting.source),
+        posting.fit === null || posting.fit === undefined ? null : el("span", { class: "badge badge-fit", title: "LLM fit score" }, `fit ${posting.fit}`),
         posting.outcome === null
           ? null
           : el("span", { class: `badge outcome-${posting.outcome}` }, OUTCOME_LABELS[posting.outcome]),

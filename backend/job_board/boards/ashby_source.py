@@ -2,6 +2,7 @@
 
 from urllib.parse import quote
 
+from job_board.boards.board_ref import BoardRef
 from job_board.boards.board_source import BoardSource
 from job_board.boards.job_listing import JobListing
 from job_board.enums.platform import Platform
@@ -25,9 +26,9 @@ class AshbySource(BoardSource):
         """Ashby."""
         return Source.ASHBY
 
-    def fetch_jobs(self, slug: str) -> list[JobListing] | None:
+    async def fetch_jobs(self, board: BoardRef) -> list[JobListing] | None:
         """All listed jobs (isListed false ones are skipped)."""
-        data = as_dict(self._get_json(f"{API_ROOT}/{quote(slug)}"))
+        data = as_dict(await self._get_json(f"{API_ROOT}/{quote(board.slug)}"))
         jobs = None if data is None else as_list(data.get("jobs"))
         if jobs is None:
             return None

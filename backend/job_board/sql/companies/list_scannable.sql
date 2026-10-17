@@ -1,5 +1,5 @@
 -- Companies to scan: verified, enabled, and on a supported platform, alphabetically.
-SELECT name, platform, slug
+SELECT name, platform, slug, company_uid, token, tenant, wd_host, site
 FROM companies
 WHERE verified = 1
   AND enabled = 1

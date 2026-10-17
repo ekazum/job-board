@@ -1,4 +1,4 @@
-"""Domain normalization shared by config parsing and the API."""
+"""Domain and URL normalization shared by config parsing and the API."""
 
 from urllib.parse import urlsplit
 
@@ -17,3 +17,14 @@ def bare_domain_or_none(value: str | None) -> str | None:
     if value is None or not value.strip():
         return None
     return bare_domain(value)
+
+
+def web_url_or_none(value: str | None) -> str | None:
+    """A stripped http(s) URL; None and blank stay None; ValueError for any other scheme."""
+    if value is None or not value.strip():
+        return None
+    text = value.strip()
+    parts = urlsplit(text)
+    if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+        raise ValueError(f"not an http(s) URL: {value!r}")
+    return text

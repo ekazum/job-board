@@ -1,6 +1,6 @@
 import { createCompany, errorMessage, getCompanies, patchCompany, runDiscover, runScan } from "./api";
 import { el } from "./dom";
-import { PLATFORM_LABELS, byName, formatDateTime, type Company, type RunIssue } from "./domain";
+import { PLATFORM_LABELS, byName, formatDateTime, isWebUrl, type Company, type RunSummary } from "./domain";
 
 export interface CompaniesViewCallbacks {
   /** A scan finished; the board should reload its postings. */
@@ -9,12 +9,12 @@ export interface CompaniesViewCallbacks {
   onError(message: string): void;
 }
 
-const COLUMNS = ["Name", "Platform", "Slug", "Verified", "Enabled"];
+const COLUMNS = ["Name", "Platform", "Slug", "Careers URL", "Verified", "Enabled"];
 
 /**
- * Companies table with Add company, Discover and Scan. Discover and Scan run synchronously on the server
- * and can take minutes; both buttons stay disabled until the run returns (the server also refuses a second
- * run with 409).
+ * Companies table with Add company, Discover and Scan. The careers URL of each company is editable in place
+ * (Discover fetches it first). Discover and Scan answer when the run is done; both buttons stay disabled until
+ * then (the server also refuses a second run with 409). A company's last error is shown under its platform.
  */
 export class CompaniesView {
   readonly element: HTMLElement;
@@ -29,8 +29,8 @@ export class CompaniesView {
     this.callbacks = callbacks;
     this.discoverButton = el("button", { type: "button", class: "button-primary" }, "Discover");
     this.scanButton = el("button", { type: "button", class: "button-primary" }, "Scan");
-    this.discoverButton.addEventListener("click", () => void this.discover());
-    this.scanButton.addEventListener("click", () => void this.scan());
+    this.discoverButton.addEventListener("click", () => void this.run("Discover", this.discoverButton, runDiscover));
+    this.scanButton.addEventListener("click", () => void this.run("Scan", this.scanButton, runScan));
     this.summary = el("section", { class: "run-summary", "aria-live": "polite", hidden: true });
     this.tbody = el("tbody");
     const head = el("thead", {}, el("tr", {}, ...COLUMNS.map((column) => el("th", { scope: "col" }, column))));
@@ -46,7 +46,7 @@ export class CompaniesView {
       el(
         "p",
         { class: "muted companies-hint" },
-        "Discover finds each company's job board. Scan adds matching jobs to the board as New. Each can take a few minutes.",
+        "Discover finds each company's job board, starting from its careers URL. Scan adds matching jobs to the board as New.",
       ),
       this.summary,
       el("div", { class: "table-wrap" }, el("table", { class: "companies-table" }, head, this.tbody)),
@@ -66,23 +66,38 @@ export class CompaniesView {
   private addForm(): HTMLFormElement {
     const name = el("input", { "aria-label": "Company name", placeholder: "Company", required: true, autocomplete: "off" });
     const domain = el("input", { "aria-label": "Domain", placeholder: "domain.com", required: true, autocomplete: "off" });
+    const careersUrl = el("input", {
+      type: "url",
+      "aria-label": "Careers URL (optional)",
+      placeholder: "https://… careers page (optional)",
+      autocomplete: "off",
+      class: "careers-input",
+    });
     const submit = el("button", { type: "submit", class: "button-ghost" }, "Add company");
-    const form = el("form", { class: "add-company" }, name, domain, submit);
+    const form = el("form", { class: "add-company" }, name, domain, careersUrl, submit);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      void this.add(form, name, domain, submit);
+      void this.add(form, { name, domain, careersUrl }, submit);
     });
     return form;
   }
 
-  private async add(form: HTMLFormElement, name: HTMLInputElement, domain: HTMLInputElement, submit: HTMLButtonElement): Promise<void> {
+  private async add(
+    form: HTMLFormElement,
+    fields: { name: HTMLInputElement; domain: HTMLInputElement; careersUrl: HTMLInputElement },
+    submit: HTMLButtonElement,
+  ): Promise<void> {
     submit.disabled = true;
     try {
-      const { company, created } = await createCompany({ name: name.value, domain: domain.value });
+      const { company, created } = await createCompany({
+        name: fields.name.value,
+        domain: fields.domain.value,
+        careers_url: fields.careersUrl.value || null,
+      });
       if (created) {
         this.upsert(company);
         form.reset();
-        name.focus();
+        fields.name.focus();
         this.callbacks.onInfo(`Added ${company.name}. Click Discover to find its job board.`);
       } else {
         this.callbacks.onInfo(`${company.name} is already in the list`);
@@ -94,44 +109,24 @@ export class CompaniesView {
     }
   }
 
-  private async discover(): Promise<void> {
-    const result = await this.run(this.discoverButton, "Discovering…", runDiscover);
-    if (result === null) {
-      return;
-    }
-    this.showSummary(
-      `Discover: ${result.companies} companies · ${result.verified} verified · ${result.unverified} unverified · ` +
-        `${result.no_platform} no supported platform`,
-      result.issues,
-    );
-    await this.load();
-  }
-
-  private async scan(): Promise<void> {
-    const result = await this.run(this.scanButton, "Scanning…", runScan);
-    if (result === null) {
-      return;
-    }
-    this.showSummary(
-      `Scan: ${result.companies} companies · ${result.jobs_seen.toLocaleString()} jobs seen · ` +
-        `${result.matched.toLocaleString()} matched · ${result.added.toLocaleString()} added to New`,
-      result.issues,
-    );
-    this.callbacks.onScanned();
-  }
-
-  /** Disable both run buttons while one run is in flight; null when it failed (already reported). */
-  private async run<T>(button: HTMLButtonElement, busyLabel: string, call: () => Promise<T>): Promise<T | null> {
-    const label = button.textContent ?? "";
+  /** Run Discover or Scan with both buttons disabled; show {ok, failed, duration} and reload. */
+  private async run(label: string, button: HTMLButtonElement, call: () => Promise<RunSummary>): Promise<void> {
+    const text = button.textContent ?? label;
     this.setRunning(true);
-    button.textContent = busyLabel;
+    button.textContent = `${label} running…`;
     try {
-      return await call();
+      const summary = await call();
+      const failed = summary.failed === 0 ? "" : " · failed companies show their error in red below";
+      this.summary.textContent = `${label}: ${summary.ok} ok · ${summary.failed} failed · ${summary.duration_s} s${failed}`;
+      this.summary.hidden = false;
+      await this.load();
+      if (label === "Scan") {
+        this.callbacks.onScanned();
+      }
     } catch (error) {
       this.callbacks.onError(errorMessage(error));
-      return null;
     } finally {
-      button.textContent = label;
+      button.textContent = text;
       this.setRunning(false);
     }
   }
@@ -139,15 +134,6 @@ export class CompaniesView {
   private setRunning(running: boolean): void {
     this.discoverButton.disabled = running;
     this.scanButton.disabled = running;
-  }
-
-  private showSummary(text: string, issues: RunIssue[]): void {
-    const items = issues.map((issue) => el("li", {}, el("strong", {}, issue.company), `: ${issue.message}`));
-    this.summary.replaceChildren(el("p", {}, text));
-    if (items.length > 0) {
-      this.summary.append(el("ul", { class: "run-issues" }, ...items));
-    }
-    this.summary.hidden = false;
   }
 
   private upsert(company: Company): void {
@@ -194,6 +180,7 @@ export class CompaniesView {
       ),
       el("td", {}, this.platformCell(company)),
       el("td", {}, company.slug === null ? el("span", { class: "muted" }, "—") : el("code", {}, company.slug)),
+      el("td", { class: "careers-cell" }, this.careersUrlField(company)),
       el(
         "td",
         {},
@@ -206,12 +193,57 @@ export class CompaniesView {
   }
 
   private platformCell(company: Company): HTMLElement {
+    const cell = el("div", { class: "platform-cell" });
     if (company.platform === null) {
-      return el("span", { class: "muted" }, "Not discovered");
+      cell.append(el("span", { class: "muted" }, "Not discovered"));
+    } else {
+      const checked = company.last_checked === null ? "" : `Checked ${formatDateTime(company.last_checked)}`;
+      cell.append(el("span", { class: company.platform === "none" ? "muted" : "", title: checked }, PLATFORM_LABELS[company.platform]));
     }
-    const checked = company.last_checked === null ? "" : `Checked ${formatDateTime(company.last_checked)}`;
-    const label = PLATFORM_LABELS[company.platform];
-    return el("span", { class: company.platform === "none" ? "muted" : "", title: checked }, label);
+    if (company.last_error !== null) {
+      cell.append(el("div", { class: "company-error", title: company.last_error }, company.last_error));
+    }
+    return cell;
+  }
+
+  /** An inline URL field; Enter or leaving the field saves a changed value (empty clears it). */
+  private careersUrlField(company: Company): HTMLElement {
+    const input = el("input", {
+      type: "url",
+      class: "careers-input",
+      placeholder: "https://…",
+      "aria-label": `Careers URL of ${company.name}`,
+    });
+    input.value = company.careers_url ?? "";
+    const save = (): void => {
+      const value = input.value.trim();
+      if (value !== (company.careers_url ?? "")) {
+        void this.setCareersUrl(company, input, value);
+      }
+    };
+    input.addEventListener("change", save);
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        input.blur();
+      }
+    });
+    const link =
+      company.careers_url !== null && isWebUrl(company.careers_url)
+        ? el("a", { href: company.careers_url, target: "_blank", rel: "noopener noreferrer", class: "careers-open", title: "Open" }, "↗")
+        : null;
+    return el("div", { class: "careers-field" }, input, link);
+  }
+
+  private async setCareersUrl(company: Company, input: HTMLInputElement, value: string): Promise<void> {
+    input.disabled = true;
+    try {
+      this.upsert(await patchCompany(company.id, { careers_url: value || null }));
+      this.callbacks.onInfo(value ? `Saved careers URL for ${company.name}` : `Cleared careers URL for ${company.name}`);
+    } catch (error) {
+      input.value = company.careers_url ?? "";
+      input.disabled = false;
+      this.callbacks.onError(errorMessage(error));
+    }
   }
 
   private async setEnabled(company: Company, toggle: HTMLInputElement): Promise<void> {

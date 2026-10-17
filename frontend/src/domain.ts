@@ -1,4 +1,4 @@
-import type { components } from "./types";
+import type { components, operations } from "./types";
 
 type Schemas = components["schemas"];
 
@@ -11,9 +11,13 @@ export type Company = Schemas["Company"];
 export type CompanyCreate = Schemas["CompanyCreate"];
 export type CompanyPatch = Schemas["CompanyPatch"];
 export type Platform = Schemas["Platform"];
-export type DiscoverResult = Schemas["DiscoverResult"];
-export type ScanResult = Schemas["ScanResult"];
-export type RunIssue = Schemas["RunIssue"];
+export type RunSummary = Schemas["RunSummary"];
+export type LlmSettingsView = Schemas["LlmSettingsView"];
+export type LlmTestResult = Schemas["LlmTestResult"];
+export type PostingFacets = Schemas["PostingFacets"];
+export type Source = Schemas["Source"];
+/** The filter bar's state: exactly the query parameters of GET /api/postings. */
+export type PostingQuery = NonNullable<operations["list_postings"]["parameters"]["query"]>;
 
 // Record<Status, …> makes the compiler flag a status added on the backend but not labelled here.
 export const STATUS_LABELS: Record<Status, string> = {
@@ -35,6 +39,7 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   lever: "Lever",
   ashby: "Ashby",
   comeet: "Comeet",
+  workday: "Workday",
   none: "None found",
 };
 

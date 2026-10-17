@@ -1,15 +1,19 @@
 """Schema behaviour (sql/schema.sql): WAL mode, de-duplication, the outcome/status rule, enum coverage."""
 
+import shutil
 import sqlite3
 from contextlib import closing
+from pathlib import Path
 
 import pytest
 
-from job_board.database import Database
+from job_board.database import LATEST_VERSION, Database
 from job_board.enums.outcome import Outcome
 from job_board.enums.platform import Platform
 from job_board.enums.source import Source
 from job_board.enums.status import Status
+
+from tests.http_fakes import FIXTURES
 
 INSERT_POSTING = (
     "INSERT INTO postings (source, external_id, company, title, url, status, outcome) "
@@ -135,6 +139,45 @@ def test_schema_accepts_every_platform(database: Database, platform: Platform) -
         connection.execute(INSERT_COMPANY, {"name": "Acme", "platform": platform})
 
 
+# --- versions and migrations ------------------------------------------------------------------------------
+
+
+def _version(database: Database) -> int:
+    with closing(database.connect()) as connection:
+        return int(connection.execute("PRAGMA user_version").fetchone()[0])
+
+
+def test_new_database_is_created_at_the_latest_version(database: Database) -> None:
+    assert _version(database) == LATEST_VERSION
+    with closing(database.connect()) as connection:
+        columns = {row["name"] for row in connection.execute("SELECT name FROM pragma_table_info('companies')")}
+    assert {"company_uid", "token", "tenant", "wd_host", "site", "last_error"} <= columns
+
+
+def test_version_1_file_is_migrated_and_keeps_its_rows(tmp_path: Path) -> None:
+    path = tmp_path / "v1.db"
+    shutil.copyfile(FIXTURES / "job_board_v1.db", path)  # created with the schema as committed before versioning
+    database = Database(path)
+    database.initialize()
+    assert _version(database) == LATEST_VERSION
+    with closing(database.connect()) as connection:
+        company = connection.execute("SELECT name, platform, slug, verified, enabled, last_error FROM companies").fetchone()
+        posting = connection.execute("SELECT status, outcome, title FROM postings").fetchone()
+        connection.execute(INSERT_COMPANY, {"name": "Nvidia", "platform": Platform.WORKDAY})  # allowed only after v2
+    assert tuple(company) == ("Acme", "greenhouse", "acme", 1, 0, None)
+    assert tuple(posting) == ("closed", "offer", "Backend Engineer")
+    database.initialize()  # nothing left to migrate
+    assert _version(database) == LATEST_VERSION
+
+
+def test_file_from_newer_code_is_refused(tmp_path: Path) -> None:
+    path = tmp_path / "future.db"
+    with closing(sqlite3.connect(path)) as connection:
+        connection.execute(f"PRAGMA user_version = {LATEST_VERSION + 1}")
+    with pytest.raises(RuntimeError, match="schema version"):
+        Database(path).initialize()
+
+
 # --- companies --------------------------------------------------------------------------------------------
 
 
@@ -151,4 +194,12 @@ def test_company_platform_starts_null_and_rejects_unknown(database: Database) ->
         row = connection.execute("SELECT platform, verified, enabled FROM companies WHERE name = 'Acme'").fetchone()
         assert (row["platform"], row["verified"], row["enabled"]) == (None, 0, 1)
         with pytest.raises(sqlite3.IntegrityError):
-            connection.execute("UPDATE companies SET platform = 'workday' WHERE name = 'Acme'")
+            connection.execute("UPDATE companies SET platform = 'taleo' WHERE name = 'Acme'")
+
+
+def test_fit_must_be_between_0_and_10(database: Database) -> None:
+    with closing(database.connect()) as connection:
+        _insert_posting(connection)
+        connection.execute("UPDATE postings SET fit = 10 WHERE external_id = :external_id", POSTING)
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute("UPDATE postings SET fit = 11 WHERE external_id = :external_id", POSTING)

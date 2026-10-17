@@ -1,9 +1,12 @@
-"""Find which careers platform each company in config.yaml uses: `python -m job_board.discover`."""
+"""Find which careers platform each company uses: `python -m job_board.discover`."""
 
+import asyncio
 import json
 import logging
 import re
+import time
 from collections.abc import Mapping
+from dataclasses import replace
 
 from job_board.app_config import AppConfig
 from job_board.boards.board_link_finder import BoardLinkFinder
@@ -17,30 +20,29 @@ from job_board.company_seed import CompanySeed
 from job_board.database import Database
 from job_board.enums.platform import Platform
 from job_board.http_client import HttpClient
-from job_board.models.discover_result import DiscoverResult
-from job_board.models.run_issue import RunIssue
+from job_board.models.run_summary import RunSummary
 from job_board.paths import CONFIG_PATH
 
 logger = logging.getLogger(__name__)
 
 CAREER_PATHS = ("/careers", "/jobs", "/join-us")
-# Comeet is absent: its boards need a company uid, which cannot be guessed from a domain.
+# Comeet and Workday are absent: their boards need ids (company uid, tenant/site) a domain cannot give.
 STEM_PROBE_ORDER = (Platform.GREENHOUSE, Platform.LEVER, Platform.ASHBY)
 # Second-level labels of two-part public suffixes: acme.co.il -> "acme", not "co".
 SECOND_LEVEL_LABELS = frozenset({"co", "com", "org", "net", "ac", "gov", "edu"})
 
 
 class Discover:
-    """Orchestrates discovery for every company in config.yaml, plus companies added in the UI with a
-    domain (config.yaml wins when both list the same name):
+    """Orchestrates discovery for every company in config.yaml, plus companies added in the UI with a domain
+    (config.yaml wins when both list the same name). Companies run concurrently; HttpClient caps the requests.
 
-    1. fetch careers_url (if configured), /careers, /jobs, /join-us and look for a board link;
-       a link found is verified against that platform's public API;
+    For each company:
+    1. fetch careers_url (config, else the stored one) and /careers, /jobs, /join-us at once, and take the board
+       linked from the first of them, in that order, that links one; the board is verified against its API;
     2. otherwise probe the domain stem ("acme" for acme.com) on the Greenhouse, Lever and Ashby APIs;
     3. otherwise record platform=none.
 
-    Each company is upserted into the companies table. A company whose boards could not be reached
-    (network, 5xx) is reported as an issue and its stored row is left unchanged.
+    A company whose boards could not be reached keeps what an earlier run found; the error goes to last_error.
     """
 
     def __init__(
@@ -55,67 +57,72 @@ class Discover:
         self._config = config
         self._database = database or Database(config.db_path)
         self._repository = repository or CompanyRepository(self._database)
-        self._http = http or HttpClient()
+        self._http = http
         self._link_finder = link_finder or BoardLinkFinder()
-        self._sources = sources or default_sources(self._http)
+        self._sources = sources
 
-    def run(self) -> DiscoverResult:
-        """Discover every company and return the counts."""
+    async def run(self) -> RunSummary:
+        """Discover every company, save the results, and return how many succeeded and failed."""
+        started = time.monotonic()
         self._database.initialize()
         seeds = self._seeds()
-        verified = unverified = no_platform = 0
-        issues: list[RunIssue] = []
-        for seed in seeds:
-            try:
-                finding = self._discover(seed)
-            except BoardUnavailableError as error:
-                logger.warning("%s: skipped, %s", seed.name, error)
-                issues.append(RunIssue(company=seed.name, message=str(error)))
-                continue
-            self._repository.record_discovery(seed, finding)
-            if finding.board is None:
-                logger.info("%s: no supported platform", seed.name)
+        if self._http is None:
+            async with HttpClient() as http:
+                outcomes = await self._discover_all(seeds, http)
+        else:
+            outcomes = await self._discover_all(seeds, self._http)
+        failed = 0
+        for seed, outcome in zip(seeds, outcomes, strict=True):
+            if isinstance(outcome, DiscoveryFinding):
+                self._repository.record_discovery(seed, outcome)
+                self._log_finding(seed, outcome)
             else:
-                state = "verified" if finding.verified else "NOT verified"
-                logger.info("%s: %s/%s, %s", seed.name, finding.board.platform, finding.board.slug, state)
-            if finding.board is None:
-                no_platform += 1
-            elif finding.verified:
-                verified += 1
-            else:
-                unverified += 1
-        return DiscoverResult(
-            companies=len(seeds),
-            verified=verified,
-            unverified=unverified,
-            no_platform=no_platform,
-            issues=issues,
-        )
+                failed += 1
+                self._repository.record_failure(seed, outcome)
+                logger.warning("%s: %s", seed.name, outcome)
+        return RunSummary(ok=len(seeds) - failed, failed=failed, duration_s=round(time.monotonic() - started, 1))
 
     def _seeds(self) -> list[CompanySeed]:
-        """config.yaml companies, then stored companies with a domain that config.yaml does not list."""
-        configured = list(self._config.companies)
-        names = {seed.name.casefold() for seed in configured}
-        added = [seed for seed in self._repository.list_seeds() if seed.name.casefold() not in names]
-        return configured + added
+        """config.yaml companies (filling a missing careers_url from the stored row), then stored companies with a
+        domain that config.yaml does not list."""
+        stored = {seed.name.casefold(): seed for seed in self._repository.list_seeds()}
+        seeds: list[CompanySeed] = []
+        for configured in self._config.companies:
+            previous = stored.pop(configured.name.casefold(), None)
+            if configured.careers_url is None and previous is not None and previous.careers_url:
+                seeds.append(replace(configured, careers_url=previous.careers_url))
+            else:
+                seeds.append(configured)
+        return seeds + list(stored.values())
 
-    def _discover(self, seed: CompanySeed) -> DiscoveryFinding:
+    async def _discover_all(self, seeds: list[CompanySeed], http: HttpClient) -> list[DiscoveryFinding | str]:
+        """Every company at once; each result is a finding or the error that stopped it."""
+        sources = self._sources or default_sources(http)
+        return list(await asyncio.gather(*(self._discover_or_error(seed, http, sources) for seed in seeds)))
+
+    async def _discover_or_error(
+        self, seed: CompanySeed, http: HttpClient, sources: Mapping[Platform, BoardSource]
+    ) -> DiscoveryFinding | str:
+        """One company's finding, or its error message."""
+        try:
+            return await self._discover(seed, http, sources)
+        except BoardUnavailableError as error:
+            return str(error)
+
+    async def _discover(self, seed: CompanySeed, http: HttpClient, sources: Mapping[Platform, BoardSource]) -> DiscoveryFinding:
         """Careers-page link first, domain-stem probe second."""
-        linked = self._linked_board(seed)
+        linked = await self._linked_board(seed, http)
         if linked is None:
-            return self._probe_stem(seed)
+            return await self._probe_stem(seed, sources)
         page_url, board = linked
-        source = self._sources.get(board.platform)
-        verified = source is not None and source.probe(board.slug)
-        return DiscoveryFinding(board=board, verified=verified, careers_url=page_url)
+        source = sources.get(board.platform)
+        verified = source is not None and await source.probe(board)
+        return DiscoveryFinding(board=board, verified=verified, careers_url=seed.careers_url or page_url)
 
-    def _linked_board(self, seed: CompanySeed) -> tuple[str, BoardRef] | None:
-        """The first careers page (in order) that links a board, with that board.
-
-        Pages that fail to load are skipped: most companies have only one of the standard paths.
-        """
-        for url in self._career_pages(seed):
-            response = self._http.get(url)
+    async def _linked_board(self, seed: CompanySeed, http: HttpClient) -> tuple[str, BoardRef] | None:
+        """The board linked from the first candidate page, in priority order; pages that fail are skipped."""
+        responses = await asyncio.gather(*(http.get(url) for url in self._career_pages(seed)))
+        for response in responses:
             if response.status != 200:
                 continue
             board = self._link_finder.find(f"{response.url}\n{response.text}")
@@ -123,38 +130,52 @@ class Discover:
                 return response.url, board
         return None
 
-    def _probe_stem(self, seed: CompanySeed) -> DiscoveryFinding:
-        """Try the domain stem as a slug on each probe platform; raise if none answered and any failed.
+    async def _probe_stem(self, seed: CompanySeed, sources: Mapping[Platform, BoardSource]) -> DiscoveryFinding:
+        """Try the domain stem as a slug on each probe platform at once; the first platform in STEM_PROBE_ORDER
+        that has the board wins. Raises when none has it and any could not be reached.
 
         A guessed slug can belong to another company (greenhouse/orca is "ORCA Service Technologies", not
         Orca Security), so where the platform exposes a board name it must match the company name.
         """
         stem = self._domain_stem(seed.domain)
-        failures: list[str] = []
-        for platform in STEM_PROBE_ORDER:
-            source = self._sources.get(platform)
-            if source is None:
+        probes = [(platform, sources[platform]) for platform in STEM_PROBE_ORDER if platform in sources]
+        results = await asyncio.gather(*(self._probe(source, BoardRef(platform, stem)) for platform, source in probes))
+        for (platform, source), result in zip(probes, results, strict=True):
+            if result is not True:
                 continue
-            try:
-                if not source.probe(stem):
-                    continue
-            except BoardUnavailableError as error:
-                failures.append(str(error))
-                continue
-            board_name = source.board_name(stem)
+            board = BoardRef(platform, stem)
+            board_name = await source.board_name(board)
             if board_name is not None and not self._same_company(seed.name, board_name):
                 logger.info("%s: %s/%s skipped, it belongs to %r", seed.name, platform, stem, board_name)
                 continue
-            return DiscoveryFinding(board=BoardRef(platform, stem), verified=True, careers_url=seed.careers_url)
+            return DiscoveryFinding(board=board, verified=True, careers_url=seed.careers_url)
+        failures = [result for result in results if isinstance(result, str)]
         if failures:
             raise BoardUnavailableError("; ".join(failures))
         return DiscoveryFinding(board=None, verified=False, careers_url=seed.careers_url)
 
     @staticmethod
+    async def _probe(source: BoardSource, board: BoardRef) -> bool | str:
+        """Whether the board exists, or the error that prevented finding out."""
+        try:
+            return await source.probe(board)
+        except BoardUnavailableError as error:
+            return str(error)
+
+    @staticmethod
+    def _log_finding(seed: CompanySeed, finding: DiscoveryFinding) -> None:
+        """One line per company."""
+        if finding.board is None:
+            logger.info("%s: no supported platform", seed.name)
+        else:
+            state = "verified" if finding.verified else "NOT verified"
+            logger.info("%s: %s/%s, %s", seed.name, finding.board.platform, finding.board.slug, state)
+
+    @staticmethod
     def _career_pages(seed: CompanySeed) -> list[str]:
-        """careers_url first when configured, then the standard paths on the company domain."""
+        """careers_url first when known, then the standard paths on the company domain."""
         pages = [seed.careers_url] if seed.careers_url else []
-        return pages + [f"https://{seed.domain}{path}" for path in CAREER_PATHS]
+        return pages + [f"https://{seed.domain}{path}" for path in CAREER_PATHS if f"https://{seed.domain}{path}" not in pages]
 
     @staticmethod
     def _same_company(company: str, board_name: str) -> bool:
@@ -173,10 +194,10 @@ class Discover:
 
 
 def main() -> None:
-    """Discover every company in config.yaml and print the counts as JSON."""
+    """Discover every company and print the summary as JSON."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    result = Discover(AppConfig.from_yaml(CONFIG_PATH)).run()
-    print(json.dumps(result.model_dump(mode="json"), indent=2))  # ASCII-only, safe on a cp1255/cp1252 console
+    summary = asyncio.run(Discover(AppConfig.from_yaml(CONFIG_PATH)).run())
+    print(json.dumps(summary.model_dump(mode="json"), indent=2))  # ASCII-only, safe on a cp1255/cp1252 console
 
 
 if __name__ == "__main__":

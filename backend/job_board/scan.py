@@ -1,7 +1,9 @@
 """Read the boards of verified companies and add matching jobs as new cards: `python -m job_board.scan`."""
 
+import asyncio
 import json
 import logging
+import time
 from collections.abc import Mapping
 
 from job_board.app_config import AppConfig
@@ -13,10 +15,10 @@ from job_board.boards.scan_target import ScanTarget
 from job_board.company_repository import CompanyRepository
 from job_board.database import Database
 from job_board.enums.platform import Platform
+from job_board.enums.source import Source
 from job_board.http_client import HttpClient
 from job_board.keyword_filter import KeywordFilter
-from job_board.models.run_issue import RunIssue
-from job_board.models.scan_result import ScanResult
+from job_board.models.run_summary import RunSummary
 from job_board.paths import CONFIG_PATH
 from job_board.posting_repository import PostingRepository
 
@@ -24,12 +26,13 @@ logger = logging.getLogger(__name__)
 
 
 class Scan:
-    """Orchestrates a scan: for each verified + enabled company, fetch the board, keep jobs that pass the
-    include/exclude keywords (title + text), and insert them as status new.
+    """Orchestrates a scan: read every verified + enabled company's board concurrently, keep jobs whose title
+    matches a wanted role (keywords.include) and no excluded one (keywords.exclude), and insert them as status new.
 
-    Inserts skip existing (source, external_id) rows, so a rescan never duplicates a card or resets its
-    status. ON CONFLICT DO NOTHING is used rather than INSERT OR IGNORE, which would also swallow CHECK
-    violations. A board that cannot be read is reported as an issue and the scan carries on.
+    Inserts skip existing (source, external_id) rows, so a rescan never duplicates a card or resets its status.
+    A board that cannot be read records its error in companies.last_error and the scan carries on; a board read
+    successfully clears it. Workday sites are searched for the include keywords and filtered to
+    config.workday_locations.
     """
 
     def __init__(
@@ -42,45 +45,60 @@ class Scan:
         sources: Mapping[Platform, BoardSource] | None = None,
         keyword_filter: KeywordFilter | None = None,
     ) -> None:
+        self._config = config
         self._database = database or Database(config.db_path)
         self._companies = companies or CompanyRepository(self._database)
         self._postings = postings or PostingRepository(self._database)
-        self._sources = sources or default_sources(http or HttpClient())
+        self._http = http
+        self._sources = sources
         self._filter = keyword_filter or KeywordFilter(config.include_keywords, config.exclude_keywords)
 
-    def run(self) -> ScanResult:
-        """Scan every verified, enabled company and return the counts."""
+    async def run(self) -> RunSummary:
+        """Scan every verified, enabled company and return how many boards were read and how many failed."""
+        started = time.monotonic()
         self._database.initialize()
         targets = self._companies.list_scannable()
-        jobs_seen = matched = added = 0
-        issues: list[RunIssue] = []
-        for target in targets:
-            source = self._sources.get(target.board.platform)
-            if source is None:
-                issues.append(RunIssue(company=target.company, message=f"no reader for {target.board.platform}"))
+        if self._http is None:
+            async with HttpClient() as http:
+                results = await self._fetch_all(targets, http)
+        else:
+            results = await self._fetch_all(targets, self._http)
+        failed = 0
+        for target, result in zip(targets, results, strict=True):
+            if isinstance(result, str):
+                failed += 1
+                self._companies.set_last_error(target.company, result)
+                logger.warning("%s: %s", target.company, result)
                 continue
-            try:
-                jobs = source.fetch_jobs(target.board.slug)
-            except BoardUnavailableError as error:
-                logger.warning("%s: skipped, %s", target.company, error)
-                issues.append(RunIssue(company=target.company, message=str(error)))
-                continue
-            if jobs is None:
-                message = f"{target.board.platform} board '{target.board.slug}' no longer exists; run discover again"
-                issues.append(RunIssue(company=target.company, message=message))
-                continue
-            kept = [job for job in jobs if self._filter.matches(job.title, job.text)]
-            new = sum(self._insert(source, target, job) for job in kept)
-            logger.info("%s: %d jobs, %d matched, %d new", target.company, len(jobs), len(kept), new)
-            jobs_seen += len(jobs)
-            matched += len(kept)
-            added += new
-        return ScanResult(companies=len(targets), jobs_seen=jobs_seen, matched=matched, added=added, issues=issues)
+            kept = [job for job in result if self._filter.matches(job.title)]
+            added = sum(self._insert(target, job) for job in kept)
+            self._companies.set_last_error(target.company, None)
+            logger.info("%s: %d jobs, %d matched, %d new", target.company, len(result), len(kept), added)
+        return RunSummary(ok=len(targets) - failed, failed=failed, duration_s=round(time.monotonic() - started, 1))
 
-    def _insert(self, source: BoardSource, target: ScanTarget, job: JobListing) -> bool:
+    async def _fetch_all(self, targets: list[ScanTarget], http: HttpClient) -> list[list[JobListing] | str]:
+        """Every board at once; each result is its jobs or the error that stopped it."""
+        sources = self._sources or default_sources(http, self._filter, self._config.workday_locations)
+        return list(await asyncio.gather(*(self._fetch(target, sources) for target in targets)))
+
+    @staticmethod
+    async def _fetch(target: ScanTarget, sources: Mapping[Platform, BoardSource]) -> list[JobListing] | str:
+        """One board's jobs, or why they could not be read."""
+        source = sources.get(target.board.platform)
+        if source is None:
+            return f"no reader for {target.board.platform}"
+        try:
+            jobs = await source.fetch_jobs(target.board)
+        except BoardUnavailableError as error:
+            return str(error)
+        if jobs is None:
+            return f"{target.board.platform} board '{target.board.slug}' no longer exists; run Discover again"
+        return jobs
+
+    def _insert(self, target: ScanTarget, job: JobListing) -> bool:
         """Add one job as a new card; False when it was already on the board."""
         _, created = self._postings.insert(
-            source=source.source,
+            source=Source(target.board.platform),
             external_id=job.external_id,
             company=target.company,
             title=job.title,
@@ -91,10 +109,10 @@ class Scan:
 
 
 def main() -> None:
-    """Scan every verified, enabled company and print the counts as JSON."""
+    """Scan every verified, enabled company and print the summary as JSON."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    result = Scan(AppConfig.from_yaml(CONFIG_PATH)).run()
-    print(json.dumps(result.model_dump(mode="json"), indent=2))  # ASCII-only, safe on a cp1255/cp1252 console
+    summary = asyncio.run(Scan(AppConfig.from_yaml(CONFIG_PATH)).run())
+    print(json.dumps(summary.model_dump(mode="json"), indent=2))  # ASCII-only, safe on a cp1255/cp1252 console
 
 
 if __name__ == "__main__":

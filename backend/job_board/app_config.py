@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
 
 from job_board.company_seed import CompanySeed
-from job_board.utils.domains import bare_domain
+from job_board.llm_settings import LlmSettings
+from job_board.llm_settings_parser import LlmSettingsParser
+from job_board.utils.domains import bare_domain, web_url_or_none
 from job_board.utils.json_values import as_dict, as_list
 
 DEFAULT_DB_PATH = "data/job_board.db"
@@ -22,6 +24,9 @@ class AppConfig:
     include_keywords: tuple[str, ...]
     exclude_keywords: tuple[str, ...]
     companies: tuple[CompanySeed, ...]
+    # Workday jobs are kept only when their location names one of these (empty keeps every location).
+    workday_locations: tuple[str, ...] = ()
+    llm: LlmSettings = field(default_factory=LlmSettings)
 
     @classmethod
     def from_yaml(cls, path: Path) -> AppConfig:
@@ -41,6 +46,8 @@ class AppConfig:
             include_keywords=cls._strings(keywords.get("include"), "keywords.include"),
             exclude_keywords=cls._strings(keywords.get("exclude"), "keywords.exclude"),
             companies=cls._seeds(data.get("companies")),
+            workday_locations=cls._strings(data.get("workday_locations"), "workday_locations"),
+            llm=LlmSettingsParser.parse(data.get("llm"), data.get("providers")),
         )
 
     @staticmethod
@@ -86,7 +93,11 @@ class AppConfig:
             careers_url = item.get("careers_url")
             if careers_url is not None and not isinstance(careers_url, str):
                 raise ValueError(f"config '{key}.careers_url' must be a string")
-            seeds.append(CompanySeed(name=name, domain=domain, careers_url=careers_url.strip() if careers_url else None))
+            try:
+                checked_url = web_url_or_none(careers_url)
+            except ValueError as error:
+                raise ValueError(f"config '{key}.careers_url' is {error}") from error
+            seeds.append(CompanySeed(name=name, domain=domain, careers_url=checked_url))
         return tuple(seeds)
 
     @staticmethod

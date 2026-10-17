@@ -2,6 +2,7 @@
 
 from urllib.parse import quote
 
+from job_board.boards.board_ref import BoardRef
 from job_board.boards.board_source import BoardSource
 from job_board.boards.job_listing import JobListing
 from job_board.enums.platform import Platform
@@ -25,17 +26,17 @@ class LeverSource(BoardSource):
         """Lever."""
         return Source.LEVER
 
-    def fetch_jobs(self, slug: str) -> list[JobListing] | None:
+    async def fetch_jobs(self, board: BoardRef) -> list[JobListing] | None:
         """All postings with plain-text descriptions."""
-        postings = as_list(self._get_json(f"{API_ROOT}/{quote(slug)}?mode=json"))
+        postings = as_list(await self._get_json(f"{API_ROOT}/{quote(board.slug)}?mode=json"))
         if postings is None:
             return None
         listings = (self._listing(posting) for posting in dicts(postings))
         return [listing for listing in listings if listing is not None]
 
-    def probe(self, slug: str) -> bool:
+    async def probe(self, board: BoardRef) -> bool:
         """Board exists: one posting is enough (limit=1)."""
-        return as_list(self._get_json(f"{API_ROOT}/{quote(slug)}?mode=json&limit=1")) is not None
+        return as_list(await self._get_json(f"{API_ROOT}/{quote(board.slug)}?mode=json&limit=1")) is not None
 
     @staticmethod
     def _listing(posting: dict[str, object]) -> JobListing | None:

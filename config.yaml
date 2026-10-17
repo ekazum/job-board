@@ -1,74 +1,130 @@
 # Relative paths are resolved against this file's folder.
 db_path: data/job_board.db
 
-# Scan filter on job title + description: case-insensitive, whole-word.
-# A job passes when it matches any include keyword and no exclude keyword; an empty include list keeps everything.
-# Because descriptions are searched too, an exclude word mentioned anywhere in the text drops the job.
+# Role filter on the job TITLE: case-insensitive, whole words. A job becomes a card when its title matches an
+# include entry and no exclude entry. "a + b" means the title contains every part, in any order:
+# "AI + engineer" matches "Senior AI Infrastructure Engineer", not "AI Sales Lead".
+# Workday sites are searched once per include entry.
 keywords:
   include:
-    - reinforcement learning
-    - LLM
-    - agent
+    # research
+    - researcher
     - research scientist
-    - AI researcher
-    - machine learning
-    - architect
-    - R&D director
+    - research engineer
+    # ML and AI engineering
+    - ML + engineer
+    - ML + engineering
+    - machine learning + engineer
+    - AI + engineer
+    - AI + engineering
+    - AI + developer
+    - LLM + engineer
+    - GenAI + engineer
+    - generative AI + engineer
+    - deep learning + engineer
+    - computer vision + engineer
+    - NLP + engineer
+    - MLOps
+    - AI + tech lead
+    - ML + tech lead
+    - AI + algorithm
+    - algorithm + engineer
+    # leadership
     - CTO
-    - VP R&D
-  exclude: [intern, student, junior]
+    - chief technology officer
+    - VP + R&D
+    - vice president + R&D
+    - director + R&D
+    - director + data science
+    # architecture
+    - architect
+  exclude:
+    - intern
+    - student
+    - junior
+    - customer support
+    - android
+    - product manager
+    - account executive
+    - SEO
+    - solutions consultant
+    - full stack
+    - full-stack
+    - fullstack
+    - marketing
+
+# Workday jobs are kept only when their location names one of these (remove the line to keep every location).
+workday_locations: [Israel]
+
+# LLM used to score postings. Switching provider is this one line (or the Settings view's drop-down).
+llm:
+  provider: ollama          # ollama | groq | github | anthropic | openai
+  model: qwen2.5:7b         # a provider entry can override it with its own model:
+  threshold: 6
+  max_text_chars: 3000
+  request_timeout_s: 120
+  max_retries: 2
+
+# OpenAI-compatible endpoints. API keys come from .env (api_key_env names the variable; NONE = no key, a dummy is
+# sent). concurrency: requests in flight (1 for a local CPU model). json_mode: send response_format=json_object.
+providers:
+  ollama:    {base_url: http://localhost:11434/v1, api_key_env: NONE, concurrency: 1, json_mode: true}
+  groq:      {base_url: https://api.groq.com/openai/v1, api_key_env: GROQ_API_KEY, concurrency: 5}
+  github:    {base_url: https://models.inference.ai.azure.com, api_key_env: GITHUB_TOKEN, concurrency: 5}
+  anthropic: {base_url: https://api.anthropic.com/v1/, api_key_env: ANTHROPIC_API_KEY, concurrency: 5}
+  openai:    {base_url: https://api.openai.com/v1, api_key_env: OPENAI_API_KEY, concurrency: 5}
 
 # Companies to discover. domain is required; careers_url is optional and fetched before
 # https://<domain>/careers, /jobs and /join-us. Edits apply on the next Discover/Scan, no restart needed.
 # Companies added in the UI (with a domain) are discovered too; this list wins when both have the same name.
 companies:
-  - {name: Wix, domain: wix.com}
-  - {name: monday.com, domain: monday.com}
-  - {name: Check Point, domain: checkpoint.com}
-  - {name: CyberArk, domain: cyberark.com}
-  - {name: Mobileye, domain: mobileye.com}
-  - {name: NICE, domain: nice.com}
-  - {name: Amdocs, domain: amdocs.com}
-  - {name: Taboola, domain: taboola.com}
-  - {name: Outbrain, domain: outbrain.com}
-  - {name: Fiverr, domain: fiverr.com}
-  - {name: Lemonade, domain: lemonade.com}
-  - {name: Payoneer, domain: payoneer.com}
-  - {name: Riskified, domain: riskified.com}
-  - {name: JFrog, domain: jfrog.com}
-  - {name: Wiz, domain: wiz.io}
-  - {name: Lightricks, domain: lightricks.com}
-  - {name: AI21 Labs, domain: ai21.com}
-  - {name: Gong, domain: gong.io}
-  - {name: Cato Networks, domain: catonetworks.com}
-  - {name: SentinelOne, domain: sentinelone.com}
-  - {name: Varonis, domain: varonis.com}
-  - {name: Forter, domain: forter.com}
-  - {name: Similarweb, domain: similarweb.com}
-  - {name: Playtika, domain: playtika.com}
-  - {name: AppsFlyer, domain: appsflyer.com}
+  - {name: Wix, domain: wix.com, careers_url: "https://careers.wix.com/"}
+  - {name: monday.com, domain: monday.com, careers_url: "https://monday.com/careers"}
+  - {name: Check Point, domain: checkpoint.com, careers_url: "https://www.checkpoint.com/careers/"}
+  - {name: CyberArk, domain: cyberark.com, careers_url: "https://www.paloaltonetworks.com/idira"}
+  - {name: Mobileye, domain: mobileye.com, careers_url: "https://careers.mobileye.com/"}
+  - {name: NICE, domain: nice.com, careers_url: "https://www.nice.com/careers"}
+  - {name: Amdocs, domain: amdocs.com, careers_url: "https://jobs.amdocs.com/careers"}
+  - {name: Taboola, domain: taboola.com, careers_url: "https://www.taboola.com/careers"}
+  - {name: Outbrain, domain: outbrain.com, careers_url: "https://www.teads.com/teads-careers/"}
+  - {name: Fiverr, domain: fiverr.com, careers_url: "https://www.fiverr.com/jobs"}
+  - {name: Lemonade, domain: lemonade.com, careers_url: "https://makers.lemonade.com/"}
+  - {name: Payoneer, domain: payoneer.com, careers_url: "https://careers.payoneer.com/"}
+  - {name: Riskified, domain: riskified.com, careers_url: "https://www.riskified.com/careers/"}
+  - {name: JFrog, domain: jfrog.com, careers_url: "https://join.jfrog.com/"}
+  - {name: Wiz, domain: wiz.io, careers_url: "https://www.wiz.io/careers"}
+  - {name: Lightricks, domain: lightricks.com, careers_url: "https://careers.lightricks.com/"}
+  - {name: AI21 Labs, domain: ai21.com, careers_url: "https://www.ai21.com/careers/"}
+  - {name: Gong, domain: gong.io, careers_url: "https://www.gong.io/careers"}
+  - {name: Cato Networks, domain: catonetworks.com, careers_url: "https://www.catonetworks.com/careers/"}
+  - {name: SentinelOne, domain: sentinelone.com, careers_url: "https://www.sentinelone.com/jobs/"}
+  - {name: Varonis, domain: varonis.com, careers_url: "https://careers.varonis.com/"}
+  - {name: Forter, domain: forter.com, careers_url: "https://www.forter.com/careers/"}
+  - {name: Similarweb, domain: similarweb.com, careers_url: "https://www.similarweb.com/corp/careers/"}
+  - {name: Playtika, domain: playtika.com, careers_url: "https://www.playtika.com/careers/"}
+  - {name: AppsFlyer, domain: appsflyer.com, careers_url: "https://careers.appsflyer.com/"}
   - {name: Cellebrite, domain: cellebrite.com}
-  - {name: Elbit Systems, domain: elbitsystems.com}
-  - {name: Hailo, domain: hailo.ai}
-  - {name: Aidoc, domain: aidoc.com}
-  - {name: Orca Security, domain: orca.security}
-  - {name: Armis, domain: armis.com}
-  - {name: Axonius, domain: axonius.com}
-  - {name: HiBob, domain: hibob.com}
-  - {name: Cyera, domain: cyera.io}
-  - {name: Island, domain: island.io}
-  - {name: Snyk, domain: snyk.io}
-  - {name: Melio, domain: meliopayments.com}
-  - {name: Via, domain: ridewithvia.com}
-  - {name: Coralogix, domain: coralogix.com}
-  - {name: Claroty, domain: claroty.com}
-  - {name: Nvidia, domain: nvidia.com}
-  - {name: Google, domain: google.com}
-  - {name: Microsoft, domain: microsoft.com}
-  - {name: Intel, domain: intel.com}
-  - {name: Apple, domain: apple.com}
-  - {name: Amazon, domain: amazon.com}
-  - {name: Meta, domain: meta.com}
-  - {name: IBM, domain: ibm.com}
-  - {name: Palo Alto Networks, domain: paloaltonetworks.com}
-  - {name: Rafael, domain: rafael.co.il}
+  - {name: Elbit Systems, domain: elbitsystems.com, careers_url: "https://elbitsystemscareer.com/"}
+  - {name: Hailo, domain: hailo.ai, careers_url: "https://hailo.ai/company-overview/careers/"}
+  - {name: Aidoc, domain: aidoc.com, careers_url: "https://www.aidoc.com/about/careers/"}
+  - {name: Orca Security, domain: orca.security, careers_url: "https://orca.security/about/careers/"}
+  - {name: Armis, domain: armis.com, careers_url: "https://www.armis.com/careers/"}
+  - {name: Axonius, domain: axonius.com, careers_url: "https://www.axonius.com/company/careers"}
+  - {name: HiBob, domain: hibob.com, careers_url: "https://www.hibob.com/careers/"}
+  - {name: Cyera, domain: cyera.io, careers_url: "https://www.cyera.com/careers"}
+  - {name: Island, domain: island.io, careers_url: "https://www.island.io/careers"}
+  - {name: Snyk, domain: snyk.io, careers_url: "https://snyk.io/careers/"}
+  - {name: Melio, domain: meliopayments.com, careers_url: "https://www.lifeatmelio.com"}
+  - {name: Via, domain: ridewithvia.com, careers_url: "https://ridewithvia.com/careers/"}
+  - {name: Coralogix, domain: coralogix.com, careers_url: "https://coralogix.com/careers/"}
+  - {name: Claroty, domain: claroty.com, careers_url: "https://claroty.com/careers"}
+  - {name: Nvidia, domain: nvidia.com, careers_url: "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite"}
+  - {name: Google, domain: google.com, careers_url: "https://www.google.com/about/careers/applications/"}
+  - {name: Microsoft, domain: microsoft.com, careers_url: "https://apply.careers.microsoft.com/careers"}
+  - {name: Intel, domain: intel.com, careers_url: "https://intel.wd1.myworkdayjobs.com/External"}
+  - {name: Apple, domain: apple.com, careers_url: "https://www.apple.com/careers/us/"}
+  - {name: Amazon, domain: amazon.com, careers_url: "https://www.amazon.jobs/en/"}
+  - {name: Meta, domain: meta.com, careers_url: "https://www.metacareers.com/"}
+  - {name: IBM, domain: ibm.com, careers_url: "https://www.ibm.com/careers"}
+  - {name: Palo Alto Networks, domain: paloaltonetworks.com, careers_url: "https://jobs.paloaltonetworks.com/en"}
+  - {name: Rafael, domain: rafael.co.il, careers_url: "https://www.rafael.co.il/careers/"}

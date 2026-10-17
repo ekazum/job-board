@@ -1,0 +1,34 @@
+[
+  {
+    "uid": "CC.372",
+    "name": "Deep Learning Engineer",
+    "url_comeet_hosted_page": "https://www.comeet.com/jobs/ai21/E6.001/deep-learning-engineer/CC.372",
+    "url_active_page": "https://www.ai21.com/careers/",
+    "location": {
+      "name": "Tel Aviv, Israel",
+      "country": "IL",
+      "city": "Tel Aviv-Yafo",
+      "state": "Tel Aviv District",
+      "postal_code": "",
+      "street_name": "14 Leonardo da Vinci Street",
+      "arrival_instructions": "<div><span><br/></span><p>Leonardo da Vinci\u00a0 Building 14, 14 -\u05d0 Entrance</p><p>4th Floor</p></div>",
+      "street_number": "14",
+      "timezone": "Asia/Jerusalem",
+      "location_uid": "29.406",
+      "is_remote": true
+    },
+    "is_internal": false,
+    "details": [
+      {
+        "name": "Description",
+        "value": "<p>Our team is looking for a Deep Learning Engineer.</p><p>AI21 is one of the few companies to have trained multi-billion parameter Large Language Models (LLMs). This feat requires top-tier engineering and deep learning algorithmic knowledge. Serving these LLMs efficiently requires cutting-edge technology as well. As a deep learning engineer on the team, you will be responsible for improving and m",
+        "order": 1
+      },
+      {
+        "name": "Role and Responsibilities",
+        "value": "<ul><li>Develop, improve and maintain our training framework and related infrastructure, as part of our applied research projects</li><li>Optimize training performance and quality in a variety of aspects, such as adding parallelism methods, improving training SDK, integrating RL environments, optimizing new model architectures, research and development of training methods, etc.</li><li>Optimize mo",
+        "order": 2
+      }
+    ]
+  }
+]

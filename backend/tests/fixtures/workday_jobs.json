@@ -1,0 +1,32 @@
+{
+  "total": 3,
+  "jobPostings": [
+    {
+      "title": "Machine Learning Engineer - Humanoid Robotics",
+      "externalPath": "/job/China-Shanghai/Machine-Learning-Engineer---Humanoid-Robotics_JR2016809",
+      "locationsText": "China, Shanghai",
+      "postedOn": "Posted 30+ Days Ago",
+      "bulletFields": [
+        "JR2016809"
+      ]
+    },
+    {
+      "title": "Machine Learning Engineer, AI Safety",
+      "externalPath": "/job/US-CA-Santa-Clara/Machine-Learning-Engineer--AI-Safety_JR2021784-1",
+      "locationsText": "2 Locations",
+      "postedOn": "Posted 11 Days Ago",
+      "bulletFields": [
+        "JR2021784"
+      ]
+    },
+    {
+      "title": "Senior DFX Software Engineer - Machine Learning",
+      "externalPath": "/job/US-CA-Santa-Clara/Senior-DFX-Software-Engineer---Machine-Learning_JR2023503",
+      "locationsText": "US, CA, Santa Clara",
+      "postedOn": "Posted 30+ Days Ago",
+      "bulletFields": [
+        "JR2023503"
+      ]
+    }
+  ]
+}

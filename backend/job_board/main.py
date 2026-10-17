@@ -3,15 +3,17 @@
 from functools import partial
 
 import uvicorn
+from dotenv import load_dotenv
 
 from job_board.app_config import AppConfig
 from job_board.app_factory import AppFactory
-from job_board.paths import CONFIG_PATH, FRONTEND_DIST
+from job_board.paths import CONFIG_PATH, ENV_PATH, FRONTEND_DIST
 
 HOST = "127.0.0.1"
 PORT = 8000
 
-app = AppFactory(partial(AppConfig.from_yaml, CONFIG_PATH), FRONTEND_DIST).build()
+load_dotenv(ENV_PATH)  # LLM API keys (GROQ_API_KEY, ...) from the repo's .env, which is git-ignored
+app = AppFactory(partial(AppConfig.from_yaml, CONFIG_PATH), FRONTEND_DIST, config_path=CONFIG_PATH).build()
 
 
 def main() -> None:

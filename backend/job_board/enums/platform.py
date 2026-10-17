@@ -14,4 +14,5 @@ class Platform(StrEnum):
     LEVER = "lever"
     ASHBY = "ashby"
     COMEET = "comeet"
+    WORKDAY = "workday"
     NONE = "none"

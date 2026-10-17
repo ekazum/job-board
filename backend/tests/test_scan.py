@@ -1,6 +1,10 @@
-"""Scan: keyword filter on title + text, dedup on (source, external_id), skipped companies, issues."""
+"""Scan: role filter on titles, dedup on (source, external_id), per-company errors, Workday and Comeet API boards."""
 
+import json
 from collections.abc import Mapping
+
+import httpx
+import pytest
 
 from job_board.app_config import AppConfig
 from job_board.boards.board_ref import BoardRef
@@ -8,134 +12,184 @@ from job_board.boards.discovery_finding import DiscoveryFinding
 from job_board.company_repository import CompanyRepository
 from job_board.company_seed import CompanySeed
 from job_board.database import Database
-from job_board.enums.platform import Platform
 from job_board.enums.outcome import Outcome
+from job_board.enums.platform import Platform
 from job_board.enums.source import Source
 from job_board.enums.status import Status
-from job_board.http_response import HttpResponse
+from job_board.models.company import Company
 from job_board.models.posting_patch import PostingPatch
-from job_board.models.scan_result import ScanResult
+from job_board.models.run_summary import RunSummary
 from job_board.posting_repository import PostingRepository
 from job_board.scan import Scan
 
-from tests.http_fakes import failure, fake_http, json_response
+from job_board.utils.json_values import as_str, dicts
+
+from tests.http_fakes import FakeWeb, fixture_dict, fixture_list
 
 ACME_JOBS = "https://boards-api.greenhouse.io/v1/boards/acme/jobs?content=true"
 GLOBEX_JOBS = "https://api.lever.co/v0/postings/globex?mode=json"
+WORKDAY_ROOT = "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite"
+COMEET_API = "https://www.comeet.co/careers-api/2.0/company/E6.001/positions?token=TESTTOKEN&details=true"
 
 
-def _gh_job(job_id: int, title: str, content: str = "") -> dict[str, object]:
-    return {"id": job_id, "title": title, "absolute_url": f"https://job-boards.greenhouse.io/acme/jobs/{job_id}", "content": content}
+def _gh_job(job_id: int, title: str) -> dict[str, object]:
+    return {"id": job_id, "title": title, "absolute_url": f"https://job-boards.greenhouse.io/acme/jobs/{job_id}", "content": ""}
 
 
 ACME_BOARD = {
     "jobs": [
-        _gh_job(1, "Backend Engineer"),
-        _gh_job(2, "Software Engineer", "&lt;p&gt;Our stack: Python.&lt;/p&gt;"),  # include keyword only in text
-        _gh_job(3, "Backend Intern"),  # exclude keyword in title
-        _gh_job(4, "Backend Engineer, Payments", "&lt;p&gt;You will mentor an intern.&lt;/p&gt;"),  # exclude in text
-        _gh_job(5, "Account Executive"),  # no include keyword
+        _gh_job(1, "Senior AI Engineer"),
+        _gh_job(2, "Security Researcher"),
+        _gh_job(3, "AI Research Intern"),  # excluded role
+        _gh_job(4, "Backend Engineer"),  # not a wanted role
+        _gh_job(5, "Principal AI Product Manager"),  # excluded role
     ]
 }
-ACME_RESPONSES = {ACME_JOBS: json_response(ACME_JOBS, ACME_BOARD)}
 
 
-def _add_company(database: Database, name: str, board: BoardRef | None, verified: bool = True) -> None:
+def _add(database: Database, name: str, board: BoardRef | None, verified: bool = True) -> None:
     finding = DiscoveryFinding(board=board, verified=verified, careers_url=None)
     CompanyRepository(database).record_discovery(CompanySeed(name, f"{name.lower()}.com"), finding)
 
 
-def _scan(database: Database, responses: Mapping[str, HttpResponse]) -> ScanResult:
-    config = AppConfig(db_path=database.path, include_keywords=("backend", "python"), exclude_keywords=("intern",), companies=())
-    return Scan(config, database=database, http=fake_http(responses)).run()
+async def _scan(database: Database, web: FakeWeb, locations: tuple[str, ...] = ()) -> RunSummary:
+    config = AppConfig(
+        db_path=database.path,
+        include_keywords=("AI + engineer", "researcher", "software engineer"),
+        exclude_keywords=("intern", "product manager"),
+        companies=(),
+        workday_locations=locations,
+    )
+    async with web.client() as http:
+        return await Scan(config, database=database, http=http).run()
+
+
+def _acme_web(board: Mapping[str, object] | None = None) -> FakeWeb:
+    web = FakeWeb()
+    web.json(ACME_JOBS, ACME_BOARD if board is None else board)
+    return web
 
 
 def _titles(database: Database) -> list[str]:
     return sorted(posting.title for posting in PostingRepository(database).list_all())
 
 
-def test_keywords_apply_to_title_and_text(database: Database) -> None:
-    _add_company(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
-    result = _scan(database, ACME_RESPONSES)
-    assert (result.companies, result.jobs_seen, result.matched, result.added, result.issues) == (1, 5, 2, 2, [])
-    assert _titles(database) == ["Backend Engineer", "Software Engineer"]
+def _company(database: Database, name: str) -> Company:
+    return next(company for company in CompanyRepository(database).list_all() if company.name == name)
 
 
-def test_scanned_postings_are_new_with_platform_source_and_company_name(database: Database) -> None:
-    _add_company(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
-    _scan(database, ACME_RESPONSES)
-    posting = next(p for p in PostingRepository(database).list_all() if p.external_id == "2")
-    assert (posting.source, posting.company, posting.status, posting.outcome) == (Source.GREENHOUSE, "Acme", Status.NEW, None)
-    assert posting.text == "Our stack: Python."
-    assert posting.url == "https://job-boards.greenhouse.io/acme/jobs/2"
+@pytest.mark.anyio
+async def test_only_wanted_roles_become_cards(database: Database) -> None:
+    _add(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
+    summary = await _scan(database, _acme_web())
+    assert (summary.ok, summary.failed) == (1, 0)
+    assert _titles(database) == ["Security Researcher", "Senior AI Engineer"]
+    posting = next(p for p in PostingRepository(database).list_all() if p.external_id == "1")
+    assert (posting.source, posting.company, posting.status) == (Source.GREENHOUSE, "Acme", Status.NEW)
 
 
 # --- dedup rule: UNIQUE(source, external_id); a rescan never duplicates, overwrites or resets a card ------
 
 
-def test_rescan_adds_nothing_and_keeps_status_outcome_and_note(database: Database) -> None:
-    _add_company(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
-    assert _scan(database, ACME_RESPONSES).added == 2
+@pytest.mark.anyio
+async def test_rescan_adds_nothing_and_keeps_status_outcome_and_note(database: Database) -> None:
+    _add(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
+    await _scan(database, _acme_web())
     postings = PostingRepository(database)
     closed = next(p for p in postings.list_all() if p.external_id == "1")
     postings.save(PostingPatch(status=Status.CLOSED, outcome=Outcome.REJECTED, note="no reply").apply_to(closed))
-
-    renamed = {"jobs": [_gh_job(1, "Backend Engineer (renamed)"), *ACME_BOARD["jobs"][1:]]}
-    again = _scan(database, {ACME_JOBS: json_response(ACME_JOBS, renamed)})
-
-    assert (again.matched, again.added) == (2, 0)
+    renamed = {"jobs": [_gh_job(1, "Senior AI Engineer (renamed)"), *ACME_BOARD["jobs"][1:]]}
+    await _scan(database, _acme_web(renamed))
     assert len(postings.list_all()) == 2
     kept = postings.get(closed.id)
     assert kept is not None
-    assert (kept.title, kept.status, kept.outcome, kept.note) == ("Backend Engineer", Status.CLOSED, Outcome.REJECTED, "no reply")
+    assert (kept.title, kept.status, kept.outcome, kept.note) == ("Senior AI Engineer", Status.CLOSED, Outcome.REJECTED, "no reply")
 
 
-def test_new_job_on_rescan_is_added(database: Database) -> None:
-    _add_company(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
-    _scan(database, ACME_RESPONSES)
-    grown = {"jobs": [*ACME_BOARD["jobs"], _gh_job(6, "Python Developer")]}
-    assert _scan(database, {ACME_JOBS: json_response(ACME_JOBS, grown)}).added == 1
-
-
-def test_same_external_id_on_another_platform_is_a_different_posting(database: Database) -> None:
-    _add_company(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
-    _add_company(database, "Globex", BoardRef(Platform.LEVER, "globex"))
-    lever = [{"id": "1", "text": "Backend Engineer", "hostedUrl": "https://jobs.lever.co/globex/1"}]
-    result = _scan(database, {**ACME_RESPONSES, GLOBEX_JOBS: json_response(GLOBEX_JOBS, lever)})
-    assert result.added == 3
+@pytest.mark.anyio
+async def test_same_external_id_on_another_platform_is_a_different_posting(database: Database) -> None:
+    _add(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
+    _add(database, "Globex", BoardRef(Platform.LEVER, "globex"))
+    web = _acme_web()
+    web.json(GLOBEX_JOBS, [{"id": "1", "text": "Staff AI Engineer", "hostedUrl": "https://jobs.lever.co/globex/1"}])
+    await _scan(database, web)
     sources = sorted(posting.source for posting in PostingRepository(database).list_all() if posting.external_id == "1")
     assert sources == [Source.GREENHOUSE, Source.LEVER]
 
 
-# --- which companies are scanned --------------------------------------------------------------------------
+# --- which companies are scanned, errors ------------------------------------------------------------------
 
 
-def test_only_verified_enabled_companies_with_a_board_are_scanned(database: Database) -> None:
-    _add_company(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
-    _add_company(database, "Unverified", BoardRef(Platform.GREENHOUSE, "unverified"), verified=False)
-    _add_company(database, "Proprietary", None, verified=False)
-    _add_company(database, "Disabled", BoardRef(Platform.GREENHOUSE, "disabled"))
+@pytest.mark.anyio
+async def test_only_verified_enabled_companies_with_a_board_are_scanned(database: Database) -> None:
+    _add(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
+    _add(database, "Unverified", BoardRef(Platform.GREENHOUSE, "unverified"), verified=False)
+    _add(database, "Proprietary", None, verified=False)
+    _add(database, "Disabled", BoardRef(Platform.GREENHOUSE, "disabled"))
     companies = CompanyRepository(database)
-    disabled = next(company for company in companies.list_all() if company.name == "Disabled")
-    companies.set_enabled(disabled.id, False)
-    http = fake_http(ACME_RESPONSES)
-    config = AppConfig(db_path=database.path, include_keywords=(), exclude_keywords=(), companies=())
-    result = Scan(config, database=database, http=http).run()
-    assert result.companies == 1
-    assert [call.args[0] for call in http.get.call_args_list] == [ACME_JOBS]
+    companies.set_enabled(_company(database, "Disabled").id, False)
+    web = _acme_web()
+    summary = await _scan(database, web)
+    assert summary.ok == 1
+    assert web.urls() == [ACME_JOBS]
 
 
-def test_unreadable_boards_are_issues_and_the_scan_continues(database: Database) -> None:
-    _add_company(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
-    _add_company(database, "Down", BoardRef(Platform.GREENHOUSE, "down"))
-    _add_company(database, "Gone", BoardRef(Platform.LEVER, "gone"))
-    down = "https://boards-api.greenhouse.io/v1/boards/down/jobs?content=true"
-    result = _scan(database, {**ACME_RESPONSES, down: failure(down, 503)})
-    assert (result.companies, result.added) == (3, 2)
-    messages = {issue.company: issue.message for issue in result.issues}
-    assert "HTTP 503" in messages["Down"]
-    assert "no longer exists" in messages["Gone"]
+@pytest.mark.anyio
+async def test_unreadable_boards_set_last_error_and_a_good_read_clears_it(database: Database) -> None:
+    _add(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
+    _add(database, "Down", BoardRef(Platform.GREENHOUSE, "down"))
+    _add(database, "Gone", BoardRef(Platform.LEVER, "gone"))
+    web = _acme_web()
+    web.status("https://boards-api.greenhouse.io/v1/boards/down/jobs?content=true", 503)
+    summary = await _scan(database, web)
+    assert (summary.ok, summary.failed) == (1, 2)
+    assert "HTTP 503" in (_company(database, "Down").last_error or "")
+    assert "no longer exists" in (_company(database, "Gone").last_error or "")
+    assert len(_titles(database)) == 2  # Acme was still scanned
+    recovered = _acme_web()
+    recovered.json("https://boards-api.greenhouse.io/v1/boards/down/jobs?content=true", {"jobs": []})
+    await _scan(database, recovered)
+    assert _company(database, "Down").last_error is None
 
 
-def test_no_companies_is_an_empty_result(database: Database) -> None:
-    assert _scan(database, {}) == ScanResult(companies=0, jobs_seen=0, matched=0, added=0, issues=[])
+@pytest.mark.anyio
+async def test_no_companies_is_an_empty_summary(database: Database) -> None:
+    summary = await _scan(database, FakeWeb())
+    assert (summary.ok, summary.failed) == (0, 0)
+
+
+# --- Workday and Comeet API -------------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_workday_board_is_searched_per_role_and_filtered_to_israel(database: Database) -> None:
+    board = BoardRef(Platform.WORKDAY, "nvidia/NVIDIAExternalCareerSite", tenant="nvidia", wd_host="wd5", site="NVIDIAExternalCareerSite")
+    _add(database, "Nvidia", board)
+    listing = fixture_dict("workday_listing_israel.json")
+    path = as_str(dicts(listing["jobPostings"])[0]["externalPath"])
+    web = FakeWeb()
+
+    def search(request: httpx.Request) -> httpx.Response:
+        term = json.loads(request.content)["searchText"]
+        answer: object = listing if term == "software engineer" else {"total": 0, "jobPostings": []}
+        return httpx.Response(200, json=answer, request=request)
+
+    web.route("POST", f"{WORKDAY_ROOT}/jobs", search)
+    web.fixture(f"{WORKDAY_ROOT}{path}", "workday_job_israel.json")
+    summary = await _scan(database, web, locations=("Israel",))
+    assert summary.ok == 1
+    stored = PostingRepository(database).list_all()
+    assert [(p.source, p.title) for p in stored] == [(Source.WORKDAY, "Senior System Software Engineer - Signing Platform")]
+    searched = sorted(json.loads(request.content)["searchText"] for request in web.requests if request.method == "POST")
+    assert searched == ["AI engineer", "researcher", "software engineer"]
+
+
+@pytest.mark.anyio
+async def test_comeet_api_board(database: Database) -> None:
+    _add(database, "AI21 Labs", BoardRef(Platform.COMEET, "AI21/E6.001", company_uid="E6.001", token="TESTTOKEN"))
+    recorded = fixture_list("comeet_positions.json")
+    web = FakeWeb()
+    applied_ai: dict[str, object] = {"uid": "ZZ.001", "name": "Software Engineer, Applied AI", "details": []}
+    web.json(COMEET_API, [*recorded, applied_ai])
+    await _scan(database, web)
+    assert [p.external_id for p in PostingRepository(database).list_all()] == ["ZZ.001"]  # "Deep Learning Engineer" is not a wanted role here

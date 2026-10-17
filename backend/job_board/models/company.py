@@ -8,7 +8,10 @@ from job_board.enums.platform import Platform
 
 
 class Company(BaseModel):
-    """A company as stored in the companies table; platform is None until discovery has run."""
+    """A company as stored in the companies table; platform is None until discovery has run.
+
+    last_error is the reason the latest discover or scan failed for this company, cleared when one succeeds.
+    """
 
     id: int
     name: str
@@ -19,3 +22,4 @@ class Company(BaseModel):
     verified: bool
     enabled: bool
     last_checked: datetime | None
+    last_error: str | None

@@ -1,11 +1,15 @@
 """HTTP endpoints under /api/postings."""
 
-from fastapi import APIRouter, HTTPException, Response, status
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from job_board.enums.source import Source
 from job_board.models.posting import Posting
+from job_board.models.posting_facets import PostingFacets
 from job_board.models.posting_create import PostingCreate
 from job_board.models.posting_patch import PostingPatch
+from job_board.posting_filter import PostingFilter
 from job_board.posting_repository import PostingRepository
 from job_board.url_normalizer import UrlNormalizer
 
@@ -21,6 +25,7 @@ class PostingRoutes:
         """Build the APIRouter with this instance's endpoints."""
         router = APIRouter(prefix="/api/postings", tags=["postings"])
         router.add_api_route("", self.list_postings, methods=["GET"])
+        router.add_api_route("/facets", self.posting_facets, methods=["GET"])
         router.add_api_route(
             "",
             self.create_posting,
@@ -36,9 +41,27 @@ class PostingRoutes:
         )
         return router
 
-    def list_postings(self) -> list[Posting]:
-        """All postings, newest first."""
-        return self._repository.list_all()
+    def list_postings(
+        self,
+        q: Annotated[str | None, Query(description="Case-insensitive substring of the title")] = None,
+        company: Annotated[list[str] | None, Query(description="Only these companies (repeatable)")] = None,
+        source: Annotated[list[Source] | None, Query(description="Only these sources (repeatable)")] = None,
+        min_fit: Annotated[int | None, Query(ge=0, le=10, description="Fit at least this; unscored postings always pass")] = None,
+        in_text: Annotated[bool, Query(description="Match q in the description too")] = False,
+    ) -> list[Posting]:
+        """Postings matching the filter bar, newest first; without parameters, all of them."""
+        posting_filter = PostingFilter(
+            text=q or "",
+            in_text=in_text,
+            companies=tuple(company or ()),
+            sources=tuple(source or ()),
+            min_fit=min_fit,
+        )
+        return self._repository.search(posting_filter)
+
+    def posting_facets(self) -> PostingFacets:
+        """Companies and sources for the filter bar, and each column's unfiltered total."""
+        return self._repository.facets()
 
     def create_posting(self, body: PostingCreate, response: Response) -> Posting:
         """Add a pasted posting (source manual, external_id = canonical URL). 201 when added, 200 when already there."""

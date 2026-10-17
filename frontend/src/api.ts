@@ -2,12 +2,16 @@ import type {
   Company,
   CompanyCreate,
   CompanyPatch,
-  DiscoverResult,
+  LlmSettingsView,
+  LlmTestResult,
   Posting,
   PostingCreate,
+  PostingFacets,
   PostingPatch,
-  ScanResult,
+  PostingQuery,
+  RunSummary,
 } from "./domain";
+import { toSearchParams } from "./filter-url";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -23,8 +27,15 @@ export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export async function getPostings(): Promise<Posting[]> {
-  return (await request<Posting[]>("GET", "/api/postings")).data;
+/** Postings matching the filter (filtered on the server); all of them without one. */
+export async function getPostings(query: PostingQuery = {}): Promise<Posting[]> {
+  const search = toSearchParams(query).toString();
+  return (await request<Posting[]>("GET", search ? `/api/postings?${search}` : "/api/postings")).data;
+}
+
+/** Companies and sources for the filter bar, and each column's unfiltered total. */
+export async function getPostingFacets(): Promise<PostingFacets> {
+  return (await request<PostingFacets>("GET", "/api/postings/facets")).data;
 }
 
 /** POST a pasted posting. `created` is false when the same job (by canonical URL) was already on the board. */
@@ -51,14 +62,28 @@ export async function patchCompany(id: number, patch: CompanyPatch): Promise<Com
   return (await request<Company>("PATCH", `/api/companies/${id}`, patch)).data;
 }
 
-/** Runs synchronously on the server; can take minutes. 409 when another run is in progress. */
-export async function runDiscover(): Promise<DiscoverResult> {
-  return (await request<DiscoverResult>("POST", "/api/discover")).data;
+/** Answers when the run is done (it can take minutes); 409 when another run is in progress. */
+export async function runDiscover(): Promise<RunSummary> {
+  return (await request<RunSummary>("POST", "/api/discover")).data;
 }
 
-/** Runs synchronously on the server; can take minutes. 409 when another run is in progress. */
-export async function runScan(): Promise<ScanResult> {
-  return (await request<ScanResult>("POST", "/api/scan")).data;
+/** Answers when the run is done (it can take minutes); 409 when another run is in progress. */
+export async function runScan(): Promise<RunSummary> {
+  return (await request<RunSummary>("POST", "/api/scan")).data;
+}
+
+export async function getLlmSettings(): Promise<LlmSettingsView> {
+  return (await request<LlmSettingsView>("GET", "/api/settings/llm")).data;
+}
+
+/** Writes llm.provider into config.yaml; the next request already uses it. */
+export async function setLlmProvider(provider: string): Promise<LlmSettingsView> {
+  return (await request<LlmSettingsView>("PUT", "/api/settings/llm/provider", { provider })).data;
+}
+
+/** One tiny scoring request; failures come back in the result (ok=false), not as an HTTP error. */
+export async function testLlm(): Promise<LlmTestResult> {
+  return (await request<LlmTestResult>("POST", "/api/settings/llm/test")).data;
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {

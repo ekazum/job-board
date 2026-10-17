@@ -1,171 +1,228 @@
-"""Board sources against canned responses shaped like the live APIs (checked 2026-10-17)."""
+"""Board sources against recorded API answers (tests/fixtures, trimmed real responses from 2026-10-17)."""
 
-import html
+import json
 
+import httpx
 import pytest
 
 from job_board.boards.ashby_source import AshbySource
+from job_board.boards.board_ref import BoardRef
 from job_board.boards.board_unavailable_error import BoardUnavailableError
 from job_board.boards.comeet_source import ComeetSource
 from job_board.boards.greenhouse_source import GreenhouseSource
-from job_board.boards.job_listing import JobListing
 from job_board.boards.lever_source import LeverSource
-from job_board.http_response import HttpResponse
+from job_board.boards.workday_source import WorkdaySource
+from job_board.enums.platform import Platform
+from job_board.keyword_filter import KeywordFilter
 
-from tests.http_fakes import failure, fake_http, json_response, page, requested_urls
+from job_board.utils.json_values import as_str, dicts
 
-GH_JOBS = "https://boards-api.greenhouse.io/v1/boards/acme/jobs"
-GH_FULL = f"{GH_JOBS}?content=true"
-LEVER = "https://api.lever.co/v0/postings/acme?mode=json"
-ASHBY = "https://api.ashbyhq.com/posting-api/job-board/acme"
-COMEET = "https://www.comeet.com/jobs/acme/98.008"
+from tests.http_fakes import FakeWeb, fixture_json, fixture_dict, fixture_list
+
+GH_JOBS = "https://boards-api.greenhouse.io/v1/boards/anthropic/jobs"
+LEVER = "https://api.lever.co/v0/postings/palantir?mode=json"
+ASHBY = "https://api.ashbyhq.com/posting-api/job-board/openai"
+COMEET_API = "https://www.comeet.co/careers-api/2.0/company/E6.001/positions?token=TESTTOKEN&details=true"
+COMEET_PAGE = "https://www.comeet.com/jobs/tripleten/98.008"
+WORKDAY_ROOT = "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite"
+WORKDAY = BoardRef(Platform.WORKDAY, "nvidia/NVIDIAExternalCareerSite", tenant="nvidia", wd_host="wd5", site="NVIDIAExternalCareerSite")
+
+
+def _board(platform: Platform, slug: str) -> BoardRef:
+    return BoardRef(platform, slug)
 
 
 # --- Greenhouse -------------------------------------------------------------------------------------------
 
 
-def test_greenhouse_jobs_with_entity_encoded_content() -> None:
-    content = html.escape("<h2>About</h2><p>APIs &amp; data.</p>")
-    payload = {
-        "jobs": [
-            {"id": 4461450008, "title": " Backend Engineer ", "absolute_url": "https://job-boards.greenhouse.io/acme/jobs/1", "content": content},
-            {"id": 2, "title": "", "absolute_url": "https://x"},  # no title: skipped
-        ],
-        "meta": {"total": 2},
-    }
-    jobs = GreenhouseSource(fake_http({GH_FULL: json_response(GH_FULL, payload)})).fetch_jobs("acme")
-    assert jobs == [
-        JobListing(
-            external_id="4461450008",
-            title="Backend Engineer",
-            url="https://job-boards.greenhouse.io/acme/jobs/1",
-            text="About\n\nAPIs & data.",
-        )
-    ]
+@pytest.mark.anyio
+async def test_greenhouse_jobs_from_recorded_board() -> None:
+    web = FakeWeb()
+    web.fixture(f"{GH_JOBS}?content=true", "greenhouse_jobs.json")
+    async with web.client() as http:
+        jobs = await GreenhouseSource(http).fetch_jobs(_board(Platform.GREENHOUSE, "anthropic"))
+    assert jobs is not None and len(jobs) == 2
+    assert jobs[0].external_id == "4461450008"
+    assert jobs[0].url.startswith("https://job-boards.greenhouse.io/anthropic/jobs/")
+    assert jobs[0].text.startswith("About Anthropic")  # entity-encoded HTML decoded to text
+    assert "&lt;" not in jobs[0].text and "<" not in jobs[0].text
 
 
-def test_greenhouse_probe_uses_the_light_endpoint() -> None:
-    http = fake_http({GH_JOBS: json_response(GH_JOBS, {"jobs": []})})
-    assert GreenhouseSource(http).probe("acme") is True
-    assert requested_urls(http) == [GH_JOBS]
+@pytest.mark.anyio
+async def test_greenhouse_probe_and_board_name() -> None:
+    web = FakeWeb()
+    web.json(GH_JOBS, {"jobs": []})
+    web.fixture("https://boards-api.greenhouse.io/v1/boards/anthropic", "greenhouse_board.json")
+    async with web.client() as http:
+        source = GreenhouseSource(http)
+        assert await source.probe(_board(Platform.GREENHOUSE, "anthropic")) is True
+        assert await source.board_name(_board(Platform.GREENHOUSE, "anthropic")) == "Anthropic"
+    assert web.urls()[0] == GH_JOBS  # the light endpoint, without content=true
 
 
-def test_greenhouse_unknown_board_is_none_and_errors_raise() -> None:
-    assert GreenhouseSource(fake_http({})).fetch_jobs("acme") is None
-    assert GreenhouseSource(fake_http({})).probe("acme") is False
-    with pytest.raises(BoardUnavailableError, match="HTTP 503"):
-        GreenhouseSource(fake_http({GH_FULL: failure(GH_FULL, 503)})).fetch_jobs("acme")
-    with pytest.raises(BoardUnavailableError, match="offline"):
-        GreenhouseSource(fake_http({GH_FULL: failure(GH_FULL)})).fetch_jobs("acme")
-    with pytest.raises(BoardUnavailableError, match="not JSON"):
-        GreenhouseSource(fake_http({GH_FULL: HttpResponse(GH_FULL, 200, "<html>")})).fetch_jobs("acme")
-
-
-def test_greenhouse_200_without_jobs_array_is_not_a_board() -> None:
-    assert GreenhouseSource(fake_http({GH_JOBS: json_response(GH_JOBS, {"error": "x"})})).probe("acme") is False
+@pytest.mark.anyio
+async def test_greenhouse_unknown_board_is_none_and_errors_raise() -> None:
+    web = FakeWeb()
+    web.status(f"{GH_JOBS}?content=true", 503)
+    async with web.client() as http:
+        source = GreenhouseSource(http)
+        assert await source.fetch_jobs(_board(Platform.GREENHOUSE, "nope")) is None
+        assert await source.probe(_board(Platform.GREENHOUSE, "nope")) is False
+        with pytest.raises(BoardUnavailableError, match="HTTP 503"):
+            await source.fetch_jobs(_board(Platform.GREENHOUSE, "anthropic"))
 
 
 # --- Lever ------------------------------------------------------------------------------------------------
 
 
-def test_lever_list_with_sections() -> None:
-    payload = [
-        {
-            "id": "6ed76ce8-4156-4b60-b120-403538bd66cd",
-            "text": "Platform Engineer",
-            "hostedUrl": "https://jobs.lever.co/acme/6ed76ce8",
-            "descriptionPlain": "We run the platform.",
-            "lists": [{"text": "Requirements", "content": "<li>Python</li><li>Kubernetes</li>"}],
-            "additionalPlain": "Remote friendly.",
-        }
-    ]
-    jobs = LeverSource(fake_http({LEVER: json_response(LEVER, payload)})).fetch_jobs("acme")
-    assert jobs is not None
-    assert (jobs[0].external_id, jobs[0].title, jobs[0].url) == ("6ed76ce8-4156-4b60-b120-403538bd66cd", "Platform Engineer", "https://jobs.lever.co/acme/6ed76ce8")
-    assert jobs[0].text == "We run the platform.\n\nRequirements\n\n- Python\n- Kubernetes\n\nRemote friendly."
+@pytest.mark.anyio
+async def test_lever_postings_from_recorded_board() -> None:
+    web = FakeWeb()
+    web.fixture(LEVER, "lever_postings.json")
+    async with web.client() as http:
+        jobs = await LeverSource(http).fetch_jobs(_board(Platform.LEVER, "palantir"))
+    recorded = fixture_list("lever_postings.json")
+    assert jobs is not None and len(jobs) == len(recorded)
+    assert jobs[0].url.startswith("https://jobs.lever.co/palantir/")
+    assert jobs[0].text  # descriptionPlain + list sections + additionalPlain
 
 
-def test_lever_probe_asks_for_one_posting() -> None:
-    probe_url = f"{LEVER}&limit=1"
-    http = fake_http({probe_url: json_response(probe_url, [])})
-    assert LeverSource(http).probe("acme") is True
-    assert requested_urls(http) == [probe_url]
-
-
-def test_lever_unknown_board() -> None:
-    not_found = json_response(LEVER, {"ok": False, "error": "Document not found"}, status=404)
-    assert LeverSource(fake_http({LEVER: not_found})).fetch_jobs("acme") is None
+@pytest.mark.anyio
+async def test_lever_probe_asks_for_one_posting() -> None:
+    web = FakeWeb()
+    web.json(f"{LEVER}&limit=1", [])
+    async with web.client() as http:
+        assert await LeverSource(http).probe(_board(Platform.LEVER, "palantir")) is True
+    assert web.urls() == [f"{LEVER}&limit=1"]
 
 
 # --- Ashby ------------------------------------------------------------------------------------------------
 
 
-def test_ashby_skips_unlisted_and_falls_back_to_html() -> None:
-    payload = {
-        "apiVersion": "1",
-        "jobs": [
-            {"id": "a1", "title": "Backend Engineer", "jobUrl": "https://jobs.ashbyhq.com/acme/a1", "descriptionPlain": "Plain.", "isListed": True},
-            {"id": "a2", "title": "Hidden", "jobUrl": "https://jobs.ashbyhq.com/acme/a2", "isListed": False},
-            {"id": "a3", "title": "Data Engineer", "jobUrl": "https://jobs.ashbyhq.com/acme/a3", "descriptionHtml": "<p>From HTML</p>"},
-        ],
-    }
-    jobs = AshbySource(fake_http({ASHBY: json_response(ASHBY, payload)})).fetch_jobs("acme")
-    assert jobs is not None
-    assert [(job.external_id, job.text) for job in jobs] == [("a1", "Plain."), ("a3", "From HTML")]
-
-
-def test_ashby_unknown_board_is_plain_text_404() -> None:
-    assert AshbySource(fake_http({ASHBY: HttpResponse(ASHBY, 404, "Not Found")})).probe("acme") is False
+@pytest.mark.anyio
+async def test_ashby_jobs_from_recorded_board_skip_unlisted() -> None:
+    recorded = fixture_dict("ashby_jobs.json")
+    jobs_payload = dicts(recorded["jobs"])
+    hidden: dict[str, object] = {"id": "hidden", "title": "Hidden", "jobUrl": "https://jobs.ashbyhq.com/openai/hidden", "isListed": False}
+    web = FakeWeb()
+    web.json(ASHBY, {**recorded, "jobs": [*jobs_payload, hidden]})
+    async with web.client() as http:
+        jobs = await AshbySource(http).fetch_jobs(_board(Platform.ASHBY, "openai"))
+    assert jobs is not None and [job.external_id for job in jobs] == [job["id"] for job in jobs_payload]
 
 
 # --- Comeet -----------------------------------------------------------------------------------------------
 
 
-def _comeet_page(positions_json: str) -> str:
+@pytest.mark.anyio
+async def test_comeet_api_positions_with_token() -> None:
+    web = FakeWeb()
+    web.fixture(COMEET_API, "comeet_positions.json")
+    board = BoardRef(Platform.COMEET, "AI21/E6.001", company_uid="E6.001", token="TESTTOKEN")
+    async with web.client() as http:
+        jobs = await ComeetSource(http).fetch_jobs(board)
+    assert jobs is not None and len(jobs) >= 1
+    first = jobs[0]
+    assert (first.external_id, first.title) == ("CC.372", "Deep Learning Engineer")  # external_id = position uid
+    assert first.url == "https://www.comeet.com/jobs/ai21/E6.001/deep-learning-engineer/CC.372"
+    assert first.text.startswith("Description\n\nOur team is looking for a Deep Learning Engineer.")
+
+
+def _hosted_page(positions: object) -> str:
     """Laid out like the live page: the variable is declared first, unrelated arrays follow, then the assignment."""
     return (
         "<html><script>\n"
         "       var COMPANY_POSITIONS_DATA ;\n"
-        "       var POSITION_DATA ;\n"
         '       var LOCALES = ["en", "he"];\n'
-        '       COMPANY_DATA = {"name": "Acme"};\n'
-        f"        COMPANY_POSITIONS_DATA = {positions_json};\n"
-        "        POSITION_DATA = null;</script></html>"
+        f"       COMPANY_POSITIONS_DATA = {json.dumps(positions)};\n"
+        "       POSITION_DATA = null;</script></html>"
     )
 
 
-def test_comeet_positions_from_hosted_page() -> None:
-    positions = (
-        '[{"uid": "AC.F50", "name": "Backend Engineer", "is_internal": false,'
-        ' "url_comeet_hosted_page": "https://www.comeet.com/jobs/acme/98.008/backend-engineer/AC.F50",'
-        ' "custom_fields": {"details": [{"name": "Description", "value": "<p>Build APIs; ship [fast].</p>"},'
-        ' {"name": "Requirements", "value": "<ul><li>Python</li></ul>"}]}},'
-        ' {"uid": "AC.F51", "name": "Internal role", "is_internal": true}]'
-    )
-    jobs = ComeetSource(fake_http({COMEET: page(COMEET, _comeet_page(positions))})).fetch_jobs("acme/98.008")
-    assert jobs == [
-        JobListing(
-            external_id="acme/98.008:AC.F50",
-            title="Backend Engineer",
-            url="https://www.comeet.com/jobs/acme/98.008/backend-engineer/AC.F50",
-            text="Description\n\nBuild APIs; ship [fast].\n\nRequirements\n\n- Python",
-        )
-    ]
+@pytest.mark.anyio
+async def test_comeet_hosted_page_without_token() -> None:
+    recorded = fixture_list("comeet_positions.json")
+    internal: dict[str, object] = {"uid": "XX.001", "name": "Internal only", "is_internal": True}
+    web = FakeWeb()
+    web.page(COMEET_PAGE, _hosted_page([*recorded, internal]))
+    async with web.client() as http:
+        jobs = await ComeetSource(http).fetch_jobs(BoardRef(Platform.COMEET, "tripleten/98.008", company_uid="98.008"))
+    assert jobs is not None and "XX.001" not in [job.external_id for job in jobs] and jobs[0].external_id == "CC.372"
 
 
-def test_comeet_declaration_without_assignment_is_not_a_board() -> None:
-    declared_only = '<script>var COMPANY_POSITIONS_DATA ;\nvar LOCALES = ["en"];</script>'
-    assert ComeetSource(fake_http({COMEET: page(COMEET, declared_only)})).fetch_jobs("acme/98.008") is None
+@pytest.mark.anyio
+async def test_comeet_page_without_positions_is_not_a_board() -> None:
+    web = FakeWeb()
+    web.page("https://acme.comeet.co/", "<script>var COMPANY_POSITIONS_DATA ;</script>")
+    async with web.client() as http:
+        assert await ComeetSource(http).fetch_jobs(BoardRef(Platform.COMEET, "acme")) is None
 
 
-def test_comeet_subdomain_slug_and_page_without_positions() -> None:
-    subdomain = "https://acme.comeet.co/"
-    http = fake_http({subdomain: page(subdomain, "<html>Welcome</html>")})
-    assert ComeetSource(http).fetch_jobs("acme") is None
-    assert requested_urls(http) == [subdomain]
+# --- Workday ----------------------------------------------------------------------------------------------
 
 
-def test_comeet_malformed_positions_raise() -> None:
-    http = fake_http({COMEET: page(COMEET, _comeet_page("[{broken"))})
-    with pytest.raises(BoardUnavailableError, match="not valid JSON"):
-        ComeetSource(http).fetch_jobs("acme/98.008")
+def _workday_search(answers: dict[str, object]) -> FakeWeb:
+    """A Workday site whose jobs endpoint answers by searchText (unknown terms find nothing)."""
+    web = FakeWeb()
+
+    def search(request: httpx.Request) -> httpx.Response:
+        body = json.loads(request.content)
+        return httpx.Response(200, json=answers.get(body["searchText"], {"total": 0, "jobPostings": []}), request=request)
+
+    web.route("POST", f"{WORKDAY_ROOT}/jobs", search)
+    return web
+
+
+@pytest.mark.anyio
+async def test_workday_searches_each_keyword_and_keeps_israel_jobs() -> None:
+    listing = fixture_dict("workday_listing_israel.json")
+    path = as_str(dicts(listing["jobPostings"])[0]["externalPath"])
+    web = _workday_search({"machine learning engineer": fixture_json("workday_jobs.json"), "software engineer": listing})
+    web.fixture(f"{WORKDAY_ROOT}{path}", "workday_job_israel.json")
+    roles = KeywordFilter(["machine learning + engineer", "software engineer"], [])
+    async with web.client() as http:
+        jobs = await WorkdaySource(http, roles, ["Israel"]).fetch_jobs(WORKDAY)
+    searched = [json.loads(request.content)["searchText"] for request in web.requests if request.method == "POST"]
+    assert sorted(searched) == ["machine learning engineer", "software engineer"]  # one search per role
+    assert jobs is not None and len(jobs) == 1  # the "3 Locations" job is in Israel; others are elsewhere
+    job = jobs[0]
+    assert job.external_id == "Senior-System-Software-Engineer---Signing-Platform_JR2025357-1"  # jobPostingId
+    assert job.url.startswith("https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/job/")
+    assert job.text
+
+
+@pytest.mark.anyio
+async def test_workday_details_are_only_fetched_for_possible_location_matches() -> None:
+    web = _workday_search({"machine learning engineer": fixture_json("workday_jobs.json")})
+    async with web.client() as http:
+        jobs = await WorkdaySource(http, KeywordFilter(["machine learning + engineer"], []), ["Israel"]).fetch_jobs(WORKDAY)
+    details = web.urls("GET")
+    assert jobs == []
+    assert len(details) == 1  # only the "2 Locations" job needed its detail; Shanghai and Santa Clara did not
+
+
+@pytest.mark.anyio
+async def test_workday_pages_through_results() -> None:
+    page = {"jobPostings": [{"title": "Job", "externalPath": f"/job/x_{index}", "locationsText": "US"} for index in range(20)]}
+    offsets: list[int] = []
+
+    def search(request: httpx.Request) -> httpx.Response:
+        offset = json.loads(request.content)["offset"]
+        offsets.append(offset)
+        return httpx.Response(200, json={**page, "total": 45}, request=request)
+
+    web = FakeWeb()
+    web.route("POST", f"{WORKDAY_ROOT}/jobs", search)
+    async with web.client() as http:
+        await WorkdaySource(http, KeywordFilter(["llm"], []), ["Israel"]).fetch_jobs(WORKDAY)
+    assert offsets == [0, 20, 40]
+    assert web.urls("GET") == []  # no title matched the role, so no detail was fetched
+
+
+@pytest.mark.anyio
+async def test_workday_unknown_site_is_none_and_probe_false() -> None:
+    web = FakeWeb()
+    async with web.client() as http:
+        source = WorkdaySource(http, KeywordFilter(["llm"], []))
+        assert await source.fetch_jobs(WORKDAY) is None
+        assert await source.probe(WORKDAY) is False

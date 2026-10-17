@@ -38,20 +38,20 @@ class CompanyRoutes:
         return self._repository.list_all()
 
     def create_company(self, body: CompanyCreate, response: Response) -> Company:
-        """Add a company (name, optional domain); Discover fills in the rest. 201 when added, 200 when the name
-        exists (any case), in which case the stored row is returned unchanged."""
-        company, created = self._repository.insert(body.name, body.domain)
+        """Add a company (name, optional domain and careers_url); Discover fills in the rest. 201 when added, 200
+        when the name exists (any case), in which case the stored row is returned unchanged."""
+        company, created = self._repository.insert(body.name, body.domain, body.careers_url)
         if not created:
             response.status_code = status.HTTP_200_OK
         return company
 
     def patch_company(self, company_id: int, body: CompanyPatch) -> Company:
-        """Enable or disable scanning for a company."""
-        company = (
-            self._repository.get(company_id)
-            if body.enabled is None
-            else self._repository.set_enabled(company_id, body.enabled)
-        )
+        """Enable or disable scanning, and/or set or clear the careers page Discover fetches first."""
+        company = self._repository.get(company_id)
+        if company is not None and body.enabled is not None:
+            company = self._repository.set_enabled(company_id, body.enabled)
+        if company is not None and "careers_url" in body.model_fields_set:
+            company = self._repository.set_careers_url(company_id, body.careers_url)
         if company is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"company {company_id} not found")
         return company
