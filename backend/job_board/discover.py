@@ -13,8 +13,10 @@ from job_board.boards.board_link_finder import BoardLinkFinder
 from job_board.boards.board_ref import BoardRef
 from job_board.boards.board_source import BoardSource
 from job_board.boards.board_unavailable_error import BoardUnavailableError
+from job_board.boards.careers_site_finder import CareersSiteFinder
 from job_board.boards.default_sources import default_sources
 from job_board.boards.discovery_finding import DiscoveryFinding
+from job_board.boards.workday_tenant_probe import WorkdayTenantProbe
 from job_board.company_repository import CompanyRepository
 from job_board.company_seed import CompanySeed
 from job_board.database import Database
@@ -26,7 +28,7 @@ from job_board.paths import CONFIG_PATH
 logger = logging.getLogger(__name__)
 
 CAREER_PATHS = ("/careers", "/jobs", "/join-us")
-# Comeet and Workday are absent: their boards need ids (company uid, tenant/site) a domain cannot give.
+# Comeet is absent: its boards need a company uid a domain cannot give. Workday has its own probe (WorkdayTenantProbe).
 STEM_PROBE_ORDER = (Platform.GREENHOUSE, Platform.LEVER, Platform.ASHBY)
 # Second-level labels of two-part public suffixes: acme.co.il -> "acme", not "co".
 SECOND_LEVEL_LABELS = frozenset({"co", "com", "org", "net", "ac", "gov", "edu"})
@@ -37,10 +39,12 @@ class Discover:
     (config.yaml wins when both list the same name). Companies run concurrently; HttpClient caps the requests.
 
     For each company:
-    1. fetch careers_url (config, else the stored one) and /careers, /jobs, /join-us at once, and take the board
-       linked from the first of them, in that order, that links one; the board is verified against its API;
-    2. otherwise probe the domain stem ("acme" for acme.com) on the Greenhouse, Lever and Ashby APIs;
-    3. otherwise record platform=none.
+    1. Google, Microsoft, Apple, Amazon and Meta get their own careers site, known from the domain or careers URL;
+    2. otherwise fetch careers_url (config, else the stored one) and /careers, /jobs, /join-us at once, and take the
+       board linked from the first of them, in that order, that links one; the board is verified against its API;
+    3. otherwise probe the domain stem ("acme" for acme.com) on the Greenhouse, Lever and Ashby APIs;
+    4. otherwise probe the name and the stem as a Workday tenant on wd1..wd12.myworkdayjobs.com;
+    5. otherwise record platform=none.
 
     A company whose boards could not be reached keeps what an earlier run found; the error goes to last_error.
     """
@@ -53,6 +57,7 @@ class Discover:
         http: HttpClient | None = None,
         link_finder: BoardLinkFinder | None = None,
         sources: Mapping[Platform, BoardSource] | None = None,
+        careers_sites: CareersSiteFinder | None = None,
     ) -> None:
         self._config = config
         self._database = database or Database(config.db_path)
@@ -60,6 +65,7 @@ class Discover:
         self._http = http
         self._link_finder = link_finder or BoardLinkFinder()
         self._sources = sources
+        self._careers_sites = careers_sites or CareersSiteFinder()
 
     async def run(self) -> RunSummary:
         """Discover every company, save the results, and return how many succeeded and failed."""
@@ -110,10 +116,20 @@ class Discover:
             return str(error)
 
     async def _discover(self, seed: CompanySeed, http: HttpClient, sources: Mapping[Platform, BoardSource]) -> DiscoveryFinding:
-        """Careers-page link first, domain-stem probe second."""
+        """Own careers site, careers-page link, domain-stem probe, Workday tenant probe, in that order."""
+        own = self._careers_sites.find(seed)
+        if own is not None:
+            source = sources.get(own.platform)
+            verified = source is not None and await source.probe(own)
+            return DiscoveryFinding(board=own, verified=verified, careers_url=seed.careers_url)
         linked = await self._linked_board(seed, http)
         if linked is None:
-            return await self._probe_stem(seed, sources)
+            finding = await self._probe_stem(seed, sources)
+            workday = sources.get(Platform.WORKDAY)
+            if finding.board is not None or workday is None:
+                return finding
+            board = await WorkdayTenantProbe(http, workday).find(seed, self._domain_stem(seed.domain))
+            return finding if board is None else DiscoveryFinding(board=board, verified=True, careers_url=seed.careers_url)
         page_url, board = linked
         source = sources.get(board.platform)
         verified = source is not None and await source.probe(board)

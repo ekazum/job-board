@@ -1,0 +1,85 @@
+{
+ "error": null,
+ "hits": 2,
+ "content": {
+  "sidebar": {},
+  "search_results": {}
+ },
+ "jobs": [
+  {
+   "basic_qualifications": "- Experience leading the architecture and design (architecture, design patterns, reliability and scaling) of new and current systems<br/>- Experience programming with at least one modern language such as Java, C++, or C# including object-oriented design<br/>- 7+ years of full software development life cycle, including coding standards, code reviews, source control management, build processes, testing, and operations experience<br/>- Bachelor's degree in computer science or equivalent",
+   "business_category": "annapurna",
+   "city": "Tel Aviv",
+   "company_name": "Annapurna Labs Ltd.",
+   "country_code": "ISR",
+   "description": "Annapurna Labs designs silicon and software that accelerates innovation. Our custom chips, accelerators, and software stacks enable us to take on technical challenges that have never been seen before, and deliver results that help our customers change the world.<br/>The Integration team is looking for a Senior Software Development Engineer to lead the design and delivery of systems software for our next-generation ML accelerator servers. In this role you will own the design and implementation of CI/CD pipelines, test frameworks, and system-level validation for our next-generation ML inference accelerator platform. You will work across the full stack — from firmware interfaces through data-pl",
+   "department_cost_center": null,
+   "description_short": "Annapurna Labs designs silicon and software that accelerates innovation. Our custom chips, accelerators, and software stacks enable us to take on technical challenges that have never been seen before,",
+   "display_distance": null,
+   "id": "713ccf68-a574-42f4-9079-488ca053a77d",
+   "id_icims": "10568498",
+   "is_intern": null,
+   "is_manager": null,
+   "job_category": "Software Development",
+   "job_family": "Software Development",
+   "job_function_id": null,
+   "job_path": "/en/jobs/10568498/senior-software-development-engineer-machine-learning-israel-mlil-integration-validation",
+   "job_schedule_type": "full-time",
+   "location": "IL, Tel Aviv",
+   "locations": [
+    "{\"normalizedStateName\":\"Tel Aviv\",\"normalizedCountryCode\":\"ISR\",\"city\":\"Tel Aviv\",\"countryIso3a\":\"ISR\",\"countryIso2a\":\"IL\",\"locationNonStemming\":\"Israel, Tel Aviv\",\"coordinates\":\"32.08556,34.78953\",\"normalizedCountyName\":\"Tel Aviv\",\"type\":\"ONSITE\",\"normalizedCountryName\":\"Israel\",\"normalizedLocation\":\"Tel Aviv-Yafo, Tel Aviv, ISR\",\"location\":\"IL, Tel Aviv\",\"region\":\"\",\"buildingCodeList\":[\"TLV14A\"],\"normalizedCityName\":\"Tel Aviv-Yafo\"}"
+   ],
+   "normalized_location": "Tel Aviv-Yafo, Tel Aviv, ISR",
+   "optional_search_labels": [
+    "aws.team-annapurna-labs"
+   ],
+   "posted_date": "October  4, 2026",
+   "preferred_qualifications": "- Knowledge of Python and/or C++ programming<br/>- Experience in developing and deploying LLMs in production on GPUs, Neuron, TPU or other AI acceleration hardware<br/>- Experience in DevOps, CI/CD, pipeline, jenkins or other equivalents<br/>- Experience with elastic, grafana, cloudwatch, or other equivalents<br/><br/>Our inclusive culture empowers Amazonians to deliver the best results for our customers. If you have a disability and need a workplace accommodation or adjustment during the application and hiring process, including support for the interview or onboarding process, please visit <a href=\"https://amazon.jobs/content/en/how-we-hire/accommodations\">https://amazon.jobs/content/en/how",
+   "primary_search_label": "annapurna.no-sub-team",
+   "source_system": "JobCreator",
+   "state": null,
+   "title": "Senior Software Development Engineer, Machine Learning Israel (MLIL) — Integration Validation",
+   "university_job": null,
+   "updated_time": "10 days",
+   "url_next_step": "https://account.amazon.jobs/jobs/10568498/apply"
+  },
+  {
+   "basic_qualifications": "- BS degree in computer science, computer engineering, or related field<br/>- 6+ years of non-internship professional software development experience<br/>- Proficiency with 1 or more of the following programming languages: Python(preferred), C++<br/>- Experience working with PyTorch, TensorFlow, and/or JAX<br/>- 3+ years of experience in performance engineering for accelerated computing",
+   "business_category": "annapurna",
+   "city": "Tel Aviv",
+   "company_name": "Annapurna Labs Ltd.",
+   "country_code": "ISR",
+   "description": "Our team is responsible for the AWS Neuron software stack, which powers Generative AI and other advanced ML workloads on AWS's custom-built ML accelerators — Inferentia and Trainium. These accelerators deliver best-in-class performance and cost-efficiency for ML inference and training in the cloud.<br/>We're building a new core group of engineers in TLV (Tel Aviv) to drive innovation in ML systems performance and software. As a Machine Learning Performance Engineer, you'll help shape the direction of the team from the ground up and work on:<br/><br/>Optimizing system performance across the entire ML software stack<br/>Analyzing high-performance ML workloads running on Annapurna hardware<br/>",
+   "department_cost_center": null,
+   "description_short": "Our team is responsible for the AWS Neuron software stack, which powers Generative AI and other advanced ML workloads on AWS's custom-built ML accelerators — Inferentia and Trainium. These accelerators",
+   "display_distance": null,
+   "id": "a172245b-c71d-4c8b-bfcc-a1b4aaf4ca1e",
+   "id_icims": "10512060",
+   "is_intern": null,
+   "is_manager": null,
+   "job_category": "Software Development",
+   "job_family": "Software Development",
+   "job_function_id": null,
+   "job_path": "/en/jobs/10512060/senior-ml-performance-engineer-annapurna-labs",
+   "job_schedule_type": "full-time",
+   "location": "IL, Tel Aviv",
+   "locations": [
+    "{\"normalizedStateName\":\"Tel Aviv\",\"normalizedCountryCode\":\"ISR\",\"city\":\"Tel Aviv\",\"countryIso3a\":\"ISR\",\"countryIso2a\":\"IL\",\"locationNonStemming\":\"Israel, Tel Aviv\",\"coordinates\":\"32.08556,34.78953\",\"normalizedCountyName\":\"Tel Aviv\",\"type\":\"ONSITE\",\"normalizedCountryName\":\"Israel\",\"normalizedLocation\":\"Tel Aviv-Yafo, Tel Aviv, ISR\",\"location\":\"IL, Tel Aviv\",\"region\":\"\",\"buildingCodeList\":[\"TLV14A\"],\"normalizedCityName\":\"Tel Aviv-Yafo\"}"
+   ],
+   "normalized_location": "Tel Aviv-Yafo, Tel Aviv, ISR",
+   "optional_search_labels": [
+    "aws.team-annapurna-labs"
+   ],
+   "posted_date": "August 24, 2026",
+   "preferred_qualifications": "- Master's degree in Computer Science or a related field<br/>- Experience developing compiler optimization, kernel writing or hardware-software co-design<br/>- Experience in performance optimizations of LLM, Vision or other deep-learning models<br/><br/>Our inclusive culture empowers Amazonians to deliver the best results for our customers. If you have a disability and need a workplace accommodation or adjustment during the application and hiring process, including support for the interview or onboarding process, please visit <a href=\"https://amazon.jobs/content/en/how-we-hire/accommodations\">https://amazon.jobs/content/en/how-we-hire/accommodations</a> for more information. If the country/r",
+   "primary_search_label": "annapurna.no-sub-team",
+   "source_system": "JobCreator",
+   "state": null,
+   "title": "Senior ML Performance Engineer, Annapurna Labs ",
+   "university_job": null,
+   "updated_time": "10 days",
+   "url_next_step": "https://account.amazon.jobs/jobs/10512060/apply"
+  }
+ ],
+ "job_posting_search_request": "{\"jobPostingSearchRequest\":{\"query\":\"machine learning engineer\",\"excludeFacets\":[{\"name\":\"businessCategory\",\"values\":[{\"name\":\"a-confidential-job\"}]},{\"name\":\"isPostedExternally\",\"values\":[{\"name\":\"0\"}]},{\"name\":\"isUnsearchable\",\"values\":[{\"name\":\"1\"}]}],\"filterFacets\":[],\"start\":\"0\",\"size\":\"100\",\"sort\":{\"sortOrder\":\"DESCENDING\",\"sortType\":\"SCORE\"},\"location\":null,\"accessLevel\":\"EXTERNAL\",\"includeFacets\":[],\"locationFacets\":[[{\"name\":\"normalizedCountryCode\",\"values\":[{\"name\":\"ISR\"}]}]],\"jobTypeFacets\":[],\"contentFilterFacets\":[],\"treatment\":\"OM\"}}"
+}

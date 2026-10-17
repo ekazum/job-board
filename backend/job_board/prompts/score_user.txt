@@ -1,0 +1,12 @@
+CANDIDATE CV:
+{cv_text}
+
+CANDIDATE TARGETS:
+{targets}
+
+JOB POSTING:
+Title: {title}
+Company: {company}
+Location: {location}
+Description:
+{text}

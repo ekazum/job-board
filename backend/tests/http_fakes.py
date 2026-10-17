@@ -45,11 +45,16 @@ class FakeWeb:
 
     def __init__(self) -> None:
         self._routes: dict[tuple[str, str], Handler] = {}
+        self._any_query_routes: dict[tuple[str, str], Handler] = {}
         self.requests: list[httpx.Request] = []
 
     def route(self, method: str, url: str, handler: Handler) -> None:
         """Answer method + url with a custom handler (e.g. one that reads the JSON body)."""
         self._routes[(method, url)] = handler
+
+    def route_any_query(self, method: str, url: str, handler: Handler) -> None:
+        """Answer method + url whatever its query string (the handler reads request.url.params); exact routes win."""
+        self._any_query_routes[(method, url)] = handler
 
     def page(self, url: str, html: str, status: int = 200) -> None:
         """An HTML page."""
@@ -90,4 +95,6 @@ class FakeWeb:
     def _handle(self, request: httpx.Request) -> httpx.Response:
         self.requests.append(request)
         handler = self._routes.get((request.method, str(request.url)))
+        if handler is None:
+            handler = self._any_query_routes.get((request.method, str(request.url.copy_with(query=None))))
         return httpx.Response(404, text="Not Found", request=request) if handler is None else handler(request)

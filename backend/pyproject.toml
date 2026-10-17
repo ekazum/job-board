@@ -15,6 +15,10 @@ dependencies = [
     "anyio",
     "openai",
     "python-dotenv",
+    "python-multipart",
+    "pypdf",
+    "python-docx",
+    "geonamescache",
     # tests and type stubs, installed with the app so `pip install -e ./backend` is the whole setup
     "pytest",
     "httpx2",

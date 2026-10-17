@@ -53,8 +53,9 @@ keywords:
     - fullstack
     - marketing
 
-# Workday jobs are kept only when their location names one of these (remove the line to keep every location).
-workday_locations: [Israel]
+# Sites searched per role (Workday, Google, Microsoft, Apple, Amazon, Meta) keep only jobs located in one of these
+# (remove the line to keep every location).
+locations: [Israel]
 
 # LLM used to score postings. Switching provider is this one line (or the Settings view's drop-down).
 llm:
@@ -63,7 +64,7 @@ llm:
   threshold: 6
   max_text_chars: 3000
   request_timeout_s: 120
-  max_retries: 2
+  max_retries: 1            # one retry on 429/5xx (honouring Retry-After) or a dropped connection
 
 # OpenAI-compatible endpoints. API keys come from .env (api_key_env names the variable; NONE = no key, a dummy is
 # sent). concurrency: requests in flight (1 for a local CPU model). json_mode: send response_format=json_object.

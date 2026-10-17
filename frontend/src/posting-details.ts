@@ -1,4 +1,4 @@
-import { errorMessage, patchPosting } from "./api";
+import { errorMessage, patchPosting, rescorePosting } from "./api";
 import { el } from "./dom";
 import {
   OUTCOME_LABELS,
@@ -13,6 +13,8 @@ import {
 
 export interface PostingDetailsCallbacks {
   onSaved(posting: Posting): void;
+  /** The posting changed in a way the open panel should show (a new score). */
+  onRefresh(posting: Posting): void;
   onError(message: string): void;
 }
 
@@ -30,17 +32,21 @@ export class PostingDetails {
       { class: "details-meta" },
       el("span", { class: `status-pill status-${posting.status}` }, STATUS_LABELS[posting.status]),
       posting.source === "manual" ? null : el("span", { class: "badge" }, posting.source),
+      posting.country ? el("span", { class: "badge", title: "Country" }, posting.country) : null,
+      posting.is_remote ? el("span", { class: "badge badge-remote" }, "Remote") : null,
       el("span", { class: "muted" }, `Added ${formatDate(posting.created_at)}`),
     );
     return el(
       "div",
       { class: "details" },
       el("p", { class: "details-company" }, posting.company),
+      posting.location ? el("p", { class: "muted details-location" }, posting.location) : null,
       meta,
       isWebUrl(posting.url)
         ? el("a", { class: "details-link", href: posting.url, target: "_blank", rel: "noopener noreferrer" }, "Open posting ↗")
         : null,
       posting.status === "closed" ? this.outcomeField(posting) : null,
+      this.fitSection(posting),
       el("h3", { class: "section-heading" }, "Description"),
       posting.text
         ? el("div", { class: "details-text" }, posting.text)
@@ -64,6 +70,34 @@ export class PostingDetails {
       }
     });
     return el("label", { class: "field field-inline", for: "details-outcome" }, el("span", {}, "Outcome"), select);
+  }
+
+  /** The LLM fit (or the location rule's verdict) with its reason and gaps, and a button to check and score again. */
+  private fitSection(posting: Posting): HTMLElement {
+    const button = el("button", { type: "button", class: "button-ghost" }, "Re-score");
+    button.addEventListener("click", () => void this.rescore(posting.id, button));
+    const fit = posting.fit === null || posting.fit === undefined ? "not scored" : `${posting.fit} / 10`;
+    const gaps = posting.fit_gaps ?? [];
+    return el(
+      "section",
+      { class: "details-fit" },
+      el("h3", { class: "section-heading" }, "Fit"),
+      el("p", {}, el("strong", {}, fit), posting.fit_reason ? ` · ${posting.fit_reason}` : ""),
+      gaps.length ? el("ul", { class: "fit-gaps" }, ...gaps.map((gap) => el("li", {}, gap))) : null,
+      el("div", { class: "field-actions" }, button),
+    );
+  }
+
+  private async rescore(id: number, button: HTMLButtonElement): Promise<void> {
+    button.disabled = true;
+    button.textContent = "Scoring…";
+    try {
+      this.callbacks.onRefresh(await rescorePosting(id));
+    } catch (error) {
+      this.callbacks.onError(errorMessage(error));
+      button.disabled = false;
+      button.textContent = "Re-score";
+    }
   }
 
   private noteField(posting: Posting): HTMLElement {

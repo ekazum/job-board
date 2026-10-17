@@ -8,14 +8,15 @@ export interface FilterBarCallbacks {
 }
 
 /**
- * Search (title, or title + description), company and source pickers, a minimum-fit slider (0 = any), and Clear.
- * Typing is debounced 250 ms; every other control reports at once.
+ * Search (title, or title + description), a location search, company and source pickers, a minimum-fit slider
+ * (0 = any), and Clear. Typing is debounced 250 ms; every other control reports at once.
  */
 export class FilterBar {
   readonly element: HTMLElement;
   private readonly callbacks: FilterBarCallbacks;
   private readonly search: HTMLInputElement;
   private readonly inText: HTMLInputElement;
+  private readonly location: HTMLInputElement;
   private readonly companies: HTMLElement;
   private readonly sources: HTMLElement;
   private readonly companySummary: HTMLElement;
@@ -24,6 +25,7 @@ export class FilterBar {
   private readonly minFitLabel: HTMLElement;
   private query: PostingQuery = {};
   private timer: number | undefined;
+  private locationTimer: number | undefined;
 
   constructor(callbacks: FilterBarCallbacks) {
     this.callbacks = callbacks;
@@ -34,6 +36,11 @@ export class FilterBar {
     });
     this.inText = el("input", { type: "checkbox", id: "filter-in-text" });
     this.inText.addEventListener("change", () => this.update({ in_text: this.inText.checked }));
+    this.location = el("input", { type: "search", placeholder: "Location…", "aria-label": "Location", class: "filter-location" });
+    this.location.addEventListener("input", () => {
+      window.clearTimeout(this.locationTimer);
+      this.locationTimer = window.setTimeout(() => this.update({ location: this.location.value }), DEBOUNCE_MS);
+    });
     this.companies = el("div", { class: "multi-options" });
     this.sources = el("div", { class: "multi-options" });
     this.companySummary = el("summary", {}, "Companies");
@@ -51,6 +58,7 @@ export class FilterBar {
       { class: "filter-bar", role: "search" },
       this.search,
       el("label", { class: "filter-check", for: "filter-in-text" }, this.inText, "search description"),
+      this.location,
       el("details", { class: "multi" }, this.companySummary, this.companies),
       el("details", { class: "multi" }, this.sourceSummary, this.sources),
       el("label", { class: "filter-fit" }, this.minFitLabel, this.minFit),
@@ -63,6 +71,7 @@ export class FilterBar {
     this.query = { ...query };
     this.search.value = query.q ?? "";
     this.inText.checked = query.in_text ?? false;
+    this.location.value = query.location ?? "";
     this.minFit.value = String(query.min_fit ?? 0);
     this.syncChoices();
     if (notify) {

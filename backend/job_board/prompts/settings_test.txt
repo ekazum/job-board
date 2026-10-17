@@ -1,3 +1,12 @@
-Candidate: looking for AI research, ML engineering and AI architecture roles.
-Job title: Senior Machine Learning Engineer, LLM Infrastructure.
-Score this job.
+CANDIDATE CV:
+Ten years of Python; five years building ML platforms and LLM inference services; MSc in Computer Science.
+
+CANDIDATE TARGETS:
+AI research, ML engineering and AI architecture roles in Israel.
+
+JOB POSTING:
+Title: Senior Machine Learning Engineer, LLM Infrastructure
+Company: Example Ltd
+Location: Tel Aviv, Israel
+Description:
+Build and run the serving stack for our LLMs. 5+ years of ML engineering, strong Python.

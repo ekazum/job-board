@@ -2,9 +2,11 @@
 
 from pathlib import Path
 
+import httpx
 import pytest
 
 from job_board.app_config import AppConfig
+from job_board.boards.google_source import SEARCH_URL as GOOGLE_SEARCH
 from job_board.company_repository import CompanyRepository
 from job_board.company_seed import CompanySeed
 from job_board.database import Database
@@ -13,13 +15,14 @@ from job_board.enums.platform import Platform
 from job_board.models.company import Company
 from job_board.models.run_summary import RunSummary
 
-from tests.http_fakes import FakeWeb
+from tests.http_fakes import FakeWeb, fixture_text
 
 GH_API = "https://boards-api.greenhouse.io/v1/boards/{}/jobs"
 GH_BOARD = "https://boards-api.greenhouse.io/v1/boards/{}"
 LEVER_PROBE = "https://api.lever.co/v0/postings/{}?mode=json&limit=1"
 ASHBY_API = "https://api.ashbyhq.com/posting-api/job-board/{}"
 WORKDAY_JOBS = "https://nvidia.wd5.myworkdayjobs.com/wday/cxs/nvidia/NVIDIAExternalCareerSite/jobs"
+WORKDAY_ROBOTS = "https://{}.wd{}.myworkdayjobs.com/robots.txt"
 
 
 def _config(database: Database, *seeds: CompanySeed) -> AppConfig:
@@ -122,6 +125,49 @@ async def test_nothing_found_is_platform_none(database: Database) -> None:
     summary = await _run(database, FakeWeb(), CompanySeed("Initech", "initech.io"))
     company = _company(database, "Initech")
     assert (summary.ok, company.platform, company.slug, company.verified) == (1, Platform.NONE, None, False)
+
+
+@pytest.mark.anyio
+async def test_workday_tenant_is_probed_on_every_host_when_nothing_else_is_found(database: Database) -> None:
+    robots = (
+        "Sitemap: https://checkpoint.wd3.myworkdayjobs.com/CheckPointCareers/siteMap.xml\n\n"
+        "User-agent: *\nAllow: /CheckPointCareers/\nDisallow: /refreshFacet/\n"
+    )
+    web = FakeWeb()
+    web.route("GET", WORKDAY_ROBOTS.format("checkpoint", 3), lambda request: httpx.Response(200, text=robots, request=request))
+    web.json("https://checkpoint.wd3.myworkdayjobs.com/wday/cxs/checkpoint/CheckPointCareers/jobs", {"total": 4, "jobPostings": []}, method="POST")
+    await _run(database, web, CompanySeed("Check Point", "checkpoint.com"))
+    company = _company(database, "Check Point")
+    assert (company.platform, company.slug, company.verified) == (Platform.WORKDAY, "checkpoint/CheckPointCareers", True)
+    target = CompanyRepository(database).list_scannable()[0]
+    assert (target.board.tenant, target.board.wd_host, target.board.site) == ("checkpoint", "wd3", "CheckPointCareers")
+    probed = [url for url in web.urls() if url.endswith("/robots.txt")]
+    assert probed == [WORKDAY_ROBOTS.format("checkpoint", number) for number in range(1, 13)]  # name and stem agree
+
+
+@pytest.mark.anyio
+async def test_workday_tenant_without_a_public_site_stays_none(database: Database) -> None:
+    web = FakeWeb()
+    web.status(WORKDAY_ROBOTS.format("gong", 1), 401)  # Workday knows the tenant but it has no public job site
+    web.status(WORKDAY_ROBOTS.format("monday", 5), 422)
+    await _run(database, web, CompanySeed("Gong", "gong.io"), CompanySeed("monday.com", "monday.com"))
+    assert (_company(database, "Gong").platform, _company(database, "monday.com").platform) == (Platform.NONE, Platform.NONE)
+    assert WORKDAY_ROBOTS.format("mondaycom", 12) in web.urls()  # the name and the domain stem are both tried
+
+
+@pytest.mark.anyio
+async def test_big_tech_companies_get_their_own_careers_site(database: Database) -> None:
+    web = FakeWeb()
+    web.route("POST", GOOGLE_SEARCH, lambda request: httpx.Response(200, text=fixture_text("google_search.txt"), request=request))
+    seeds = (
+        CompanySeed("Google", "google.com", "https://www.google.com/about/careers/applications/"),
+        CompanySeed("Meta", "meta.com", "https://www.metacareers.com/"),
+    )
+    await _run(database, web, *seeds)
+    google, meta = _company(database, "Google"), _company(database, "Meta")
+    assert (google.platform, google.slug, google.verified) == (Platform.GOOGLE, "google", True)
+    assert (meta.platform, meta.slug, meta.verified) == (Platform.META, "meta", False)  # its search page did not answer
+    assert web.urls("GET") == ["https://www.metacareers.com/jobsearch/"]  # no careers page was crawled
 
 
 @pytest.mark.anyio

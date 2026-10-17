@@ -1,0 +1,25 @@
+{
+ "data": {
+  "job_search_filters": {
+   "locations": [
+    {
+     "id": "london",
+     "location_display_name": "London, UK",
+     "is_remote": false,
+     "state": "",
+     "country": "UK"
+    },
+    {
+     "id": "tel-aviv",
+     "location_display_name": "Tel Aviv, Israel",
+     "is_remote": false,
+     "state": "",
+     "country": "Israel"
+    }
+   ]
+  }
+ },
+ "extensions": {
+  "is_final": true
+ }
+}

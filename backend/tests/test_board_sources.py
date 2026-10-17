@@ -226,3 +226,20 @@ async def test_workday_unknown_site_is_none_and_probe_false() -> None:
         source = WorkdaySource(http, KeywordFilter(["llm"], []))
         assert await source.fetch_jobs(WORKDAY) is None
         assert await source.probe(WORKDAY) is False
+
+
+@pytest.mark.anyio
+async def test_sources_report_the_job_location() -> None:
+    web = FakeWeb()
+    web.fixture(f"{GH_JOBS}?content=true", "greenhouse_jobs.json")
+    web.fixture(LEVER, "lever_postings.json")
+    web.fixture(ASHBY, "ashby_jobs.json")
+    web.fixture(COMEET_API, "comeet_positions.json")
+    async with web.client() as http:
+        greenhouse = await GreenhouseSource(http).fetch_jobs(_board(Platform.GREENHOUSE, "anthropic"))
+        lever = await LeverSource(http).fetch_jobs(_board(Platform.LEVER, "palantir"))
+        ashby = await AshbySource(http).fetch_jobs(_board(Platform.ASHBY, "openai"))
+        comeet = await ComeetSource(http).fetch_jobs(BoardRef(Platform.COMEET, "AI21/E6.001", company_uid="E6.001", token="TESTTOKEN"))
+    assert greenhouse and lever and ashby and comeet
+    assert all(job.location for job in (greenhouse[0], lever[0], ashby[0], comeet[0]))
+    assert comeet[0].location.startswith("Tel Aviv, Israel")

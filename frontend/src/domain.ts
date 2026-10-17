@@ -14,7 +14,12 @@ export type Platform = Schemas["Platform"];
 export type RunSummary = Schemas["RunSummary"];
 export type LlmSettingsView = Schemas["LlmSettingsView"];
 export type LlmTestResult = Schemas["LlmTestResult"];
+export type LocationSweepResult = Schemas["LocationSweepResult"];
 export type PostingFacets = Schemas["PostingFacets"];
+export type Profile = Schemas["Profile"];
+export type ProfilePatch = Schemas["ProfilePatch"];
+export type PurgeResult = Schemas["PurgeResult"];
+export type RescoreStatus = Schemas["RescoreStatus"];
 export type Source = Schemas["Source"];
 /** The filter bar's state: exactly the query parameters of GET /api/postings. */
 export type PostingQuery = NonNullable<operations["list_postings"]["parameters"]["query"]>;
@@ -40,6 +45,11 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   ashby: "Ashby",
   comeet: "Comeet",
   workday: "Workday",
+  google: "Google careers",
+  microsoft: "Microsoft careers",
+  apple: "Apple careers",
+  amazon: "Amazon careers",
+  meta: "Meta careers",
   none: "None found",
 };
 
@@ -47,12 +57,30 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
 export const STATUSES = Object.keys(STATUS_LABELS) as Status[];
 export const OUTCOMES = Object.keys(OUTCOME_LABELS) as Outcome[];
 
+/** The location rule closed this posting (its fit_reason reads "location: …"); it sits in the Archive. */
+export function isLocationReject(posting: Posting): boolean {
+  return posting.status === "closed" && posting.outcome === "not_relevant" && (posting.fit_reason ?? "").startsWith("location: ");
+}
+
+/** The scorer or the location rule put this posting in the Archive, so the board does not show it. */
+export function isArchived(posting: Posting): boolean {
+  const scorerReject = posting.status === "closed" && posting.outcome === "not_relevant" && typeof posting.fit === "number";
+  return scorerReject || isLocationReject(posting);
+}
+
 export function parseStatus(value: string | undefined): Status | null {
   return STATUSES.find((status) => status === value) ?? null;
 }
 
 export function parseOutcome(value: string | undefined): Outcome | null {
   return OUTCOMES.find((outcome) => outcome === value) ?? null;
+}
+
+/** Best fit first, unscored postings last, then newest first: the order of the New column. */
+export function byFit(a: Posting, b: Posting): number {
+  const fitA = a.fit ?? -1;
+  const fitB = b.fit ?? -1;
+  return fitB - fitA || byNewest(a, b);
 }
 
 /** Newest first, matching the backend's ORDER BY created_at DESC, id DESC. */

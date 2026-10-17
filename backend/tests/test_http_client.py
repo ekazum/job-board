@@ -67,6 +67,17 @@ async def test_post_json_sends_the_body_and_asks_for_json() -> None:
 
 
 @pytest.mark.anyio
+async def test_post_form_sends_url_encoded_fields_and_extra_headers() -> None:
+    web = FakeWeb()
+    web.json("https://api.example/graphql", {"ok": True}, method="POST")
+    async with web.client() as http:
+        await http.post_form("https://api.example/graphql", {"lsd": "TOKEN", "variables": '{"q": "ml"}'}, {"x-fb-lsd": "TOKEN"})
+    request = web.requests[0]
+    assert request.headers["content-type"] == "application/x-www-form-urlencoded"
+    assert (request.content, request.headers["x-fb-lsd"]) == (b"lsd=TOKEN&variables=%7B%22q%22%3A+%22ml%22%7D", "TOKEN")
+
+
+@pytest.mark.anyio
 async def test_at_most_max_concurrency_requests_in_flight() -> None:
     in_flight = peak = 0
 

@@ -1,0 +1,108 @@
+{
+ "status": 200,
+ "error": {
+  "message": "",
+  "body": ""
+ },
+ "data": {
+  "positions": [
+   {
+    "id": 1970393556959639,
+    "displayJobId": "200047798",
+    "name": "Security Researcher II /Senior Security Researcher - Microsoft Defender (Multiple Roles)",
+    "locations": [
+     "Israel, Multiple Locations, Multiple Locations",
+     "Israel, Tel Aviv, Herzliya",
+     "Israel, Tel Aviv, Tel Aviv",
+     "Israel, Southern, Beer-Sheva",
+     "Israel, Haifa, Haifa",
+     "Israel, Northern, Nazareth"
+    ],
+    "standardizedLocations": [
+     "IL",
+     "Herzliya, Tel Aviv District, IL",
+     "Tel Aviv-Yafo, Tel Aviv District, IL",
+     "ב\"ש, South District, IL",
+     "Haifa, Haifa District, IL",
+     "Nazareth, North District, IL"
+    ],
+    "postedTs": 1786385421,
+    "solrScore": null,
+    "stars": 0,
+    "department": "Security Research",
+    "creationTs": 1786371382,
+    "isHot": 0,
+    "workLocationOption": "onsite",
+    "locationFlexibility": null,
+    "atsJobId": "200047798",
+    "positionUrl": "/careers/job/1970393556959639"
+   },
+   {
+    "id": 1970393557025159,
+    "displayJobId": "200060030",
+    "name": "AI Security Researcher Expert",
+    "locations": [
+     "Israel, Multiple Locations, Multiple Locations",
+     "Israel, Southern, Beer-Sheva",
+     "Israel, Haifa, Haifa",
+     "Israel, Northern, Nazareth",
+     "Israel, Tel Aviv, Tel Aviv",
+     "Israel, Tel Aviv, Herzliya"
+    ],
+    "standardizedLocations": [
+     "IL",
+     "ב\"ש, South District, IL",
+     "Haifa, Haifa District, IL",
+     "Nazareth, North District, IL",
+     "Tel Aviv-Yafo, Tel Aviv District, IL",
+     "Herzliya, Tel Aviv District, IL"
+    ],
+    "postedTs": 1792068352,
+    "solrScore": null,
+    "stars": 0,
+    "department": "Security Research",
+    "creationTs": 1791291487,
+    "isHot": 0,
+    "workLocationOption": "onsite",
+    "locationFlexibility": null,
+    "atsJobId": "200060030",
+    "positionUrl": "/careers/job/1970393557025159"
+   },
+   {
+    "id": 1970393556997829,
+    "displayJobId": "200055623",
+    "name": "Senior Security Engineer",
+    "locations": [
+     "Israel, Multiple Locations, Multiple Locations",
+     "Israel, Tel Aviv, Herzliya"
+    ],
+    "standardizedLocations": [
+     "IL",
+     "Herzliya, Tel Aviv District, IL"
+    ],
+    "postedTs": 1790158058,
+    "solrScore": null,
+    "stars": 0,
+    "department": "Security Research",
+    "creationTs": 1789379298,
+    "isHot": 0,
+    "workLocationOption": "onsite",
+    "locationFlexibility": null,
+    "atsJobId": "200055623",
+    "positionUrl": "/careers/job/1970393556997829"
+   }
+  ],
+  "filterDef": {},
+  "count": 3,
+  "sortBy": "relevance",
+  "appliedFilters": {
+   "includeRemote": [
+    "1"
+   ],
+   "includeRelocation": [
+    "0"
+   ]
+  }
+ },
+ "metadata": null
+}

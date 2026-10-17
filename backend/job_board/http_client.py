@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Mapping
 from types import TracebackType
 from typing import Self
 
@@ -55,30 +56,46 @@ class HttpClient:
 
     async def get(self, url: str) -> HttpResponse:
         """GET a URL, following redirects."""
-        return await self._send("GET", url, None)
+        return await self._send("GET", url)
 
     async def post_json(self, url: str, payload: object) -> HttpResponse:
         """POST a JSON body and ask for a JSON answer."""
-        return await self._send("POST", url, payload)
+        return await self._send("POST", url, payload=payload)
 
-    async def _send(self, method: str, url: str, payload: object) -> HttpResponse:
+    async def post_form(self, url: str, fields: Mapping[str, str], headers: Mapping[str, str] | None = None) -> HttpResponse:
+        """POST url-encoded form fields, with extra headers when the site asks for them (an anti-CSRF token)."""
+        return await self._send("POST", url, form=fields, headers=headers)
+
+    async def _send(
+        self,
+        method: str,
+        url: str,
+        *,
+        payload: object = None,
+        form: Mapping[str, str] | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> HttpResponse:
         """One attempt plus RETRIES more when the attempt timed out or the server answered 5xx."""
         attempt = 0
         while True:
-            response = await self._attempt(method, url, payload)
+            response = await self._attempt(method, url, payload, form, headers)
             if attempt >= RETRIES or not self._retryable(response):
                 return response
             attempt += 1
             logger.info("%s %s: %s, retry %d", method, url, response.error or response.status, attempt)
 
-    async def _attempt(self, method: str, url: str, payload: object) -> HttpResponse:
+    async def _attempt(
+        self, method: str, url: str, payload: object, form: Mapping[str, str] | None, headers: Mapping[str, str] | None
+    ) -> HttpResponse:
         """A single request inside the concurrency limit."""
         async with self._semaphore:
             try:
-                if payload is None:
-                    response = await self._client.request(method, url)
-                else:
+                if payload is not None:
                     response = await self._client.request(method, url, json=payload, headers=JSON_HEADERS)
+                elif form is not None:
+                    response = await self._client.request(method, url, data=dict(form), headers=dict(headers or {}))
+                else:
+                    response = await self._client.request(method, url)
             except httpx.TimeoutException as error:
                 return HttpResponse(url=url, status=0, text="", error=f"timeout: {error!r}", timed_out=True)
             except httpx.HTTPError as error:

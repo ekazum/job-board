@@ -24,8 +24,9 @@ class AppConfig:
     include_keywords: tuple[str, ...]
     exclude_keywords: tuple[str, ...]
     companies: tuple[CompanySeed, ...]
-    # Workday jobs are kept only when their location names one of these (empty keeps every location).
-    workday_locations: tuple[str, ...] = ()
+    # Sites searched per role (Workday, Google, Microsoft, Apple, Amazon, Meta) keep only jobs located in one of these
+    # (empty keeps every location).
+    locations: tuple[str, ...] = ()
     llm: LlmSettings = field(default_factory=LlmSettings)
 
     @classmethod
@@ -46,7 +47,7 @@ class AppConfig:
             include_keywords=cls._strings(keywords.get("include"), "keywords.include"),
             exclude_keywords=cls._strings(keywords.get("exclude"), "keywords.exclude"),
             companies=cls._seeds(data.get("companies")),
-            workday_locations=cls._strings(data.get("workday_locations"), "workday_locations"),
+            locations=cls._strings(data.get("locations"), "locations"),
             llm=LlmSettingsParser.parse(data.get("llm"), data.get("providers")),
         )
 

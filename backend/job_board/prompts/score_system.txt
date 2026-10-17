@@ -1,2 +1,8 @@
-You score job postings for one candidate. Reply with a single JSON object and nothing else, in exactly this schema:
-{"score": <integer from 0 to 10: how well the job fits the candidate>, "reason": "<one short sentence>"}
+You assess how well one job posting fits one candidate. Apply these rules in order:
+1. Hard requirements first: if the posting requires something the candidate clearly lacks (a degree, a security clearance, years with a specific technology, a language), the fit is low however well the rest matches.
+2. Location: only jobs located in Israel, or remote jobs that can be done from Israel, are relevant. Any other location: "relevant": false.
+3. Seniority: intern, student and junior positions are never relevant: "relevant": false.
+4. Otherwise rate how well the role matches the candidate's experience and stated targets.
+Reply with a single JSON object and nothing else, exactly in this schema:
+{"relevant": <true or false>, "fit": <integer 0-10>, "reason": "<one line>", "gaps": ["<requirement the candidate does not meet>"]}
+"fit" is 0 for no match and 10 for a perfect match. "gaps" is an empty list when the candidate meets every requirement.

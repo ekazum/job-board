@@ -13,10 +13,16 @@ from job_board.utils.sql_files import sql
 logger = logging.getLogger(__name__)
 
 BUSY_TIMEOUT_SECONDS = 5.0
-LATEST_VERSION = 3
+LATEST_VERSION = 6
 # Files created before versioning carry user_version 0 but already hold the version-1 tables.
 UNSTAMPED_EXISTING_VERSION = 1
-MIGRATIONS: dict[int, str] = {2: "migrations/002_add_workday.sql", 3: "migrations/003_add_fit.sql"}
+MIGRATIONS: dict[int, str] = {
+    2: "migrations/002_add_workday.sql",
+    3: "migrations/003_add_fit.sql",
+    4: "migrations/004_add_scoring.sql",
+    5: "migrations/005_add_company_sites.sql",
+    6: "migrations/006_add_profile_locations.sql",
+}
 
 
 class Database:

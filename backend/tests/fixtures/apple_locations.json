@@ -1,0 +1,15 @@
+{
+ "res": [
+  {
+   "id": "postLocation-ISR",
+   "name": "Israel",
+   "displayName": "Israel",
+   "titleName": "Israel",
+   "uniqueKey": "postLocation-ISR",
+   "code": "ISR",
+   "level": 1,
+   "urlName": "Israel",
+   "name_en_US": "Israel"
+  }
+ ]
+}

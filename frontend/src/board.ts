@@ -6,6 +6,7 @@ import {
   OUTCOME_LABELS,
   STATUS_LABELS,
   STATUSES,
+  byFit,
   byNewest,
   formatDate,
   parseStatus,
@@ -123,6 +124,9 @@ export class Board {
   private render(): void {
     for (const status of STATUSES) {
       const postings = this.postings.filter((posting) => posting.status === status);
+      if (status === "new") {
+        postings.sort(byFit);
+      }
       this.lists.get(status)?.replaceChildren(...postings.map((posting) => this.card(posting)));
       const count = this.counts.get(status);
       if (count !== undefined) {
@@ -132,17 +136,31 @@ export class Board {
     }
   }
 
+  /** "fit 8" with the scorer's reason and gaps on hover; "unscored" when scoring failed or had no profile. */
+  private fitBadge(posting: Posting): HTMLElement | null {
+    const gaps = posting.fit_gaps?.length ? `
+Gaps: ${posting.fit_gaps.join(", ")}` : "";
+    const hover = `${posting.fit_reason ?? ""}${gaps}`.trim();
+    if (posting.fit !== null && posting.fit !== undefined) {
+      return el("span", { class: "badge badge-fit", title: hover || "LLM fit score" }, `fit ${posting.fit}`);
+    }
+    return posting.fit_reason ? el("span", { class: "badge badge-unscored", title: posting.fit_reason }, "unscored") : null;
+  }
+
   private card(posting: Posting): HTMLElement {
     const card = el(
       "article",
       { class: "card", tabindex: "0", "data-id": String(posting.id) },
       el("h3", { class: "card-title" }, posting.title),
       el("p", { class: "card-company" }, posting.company),
+      posting.location ? el("p", { class: "card-location", title: posting.location }, posting.location) : null,
       el(
         "div",
         { class: "card-meta" },
         posting.source === "manual" ? null : el("span", { class: "badge" }, posting.source),
-        posting.fit === null || posting.fit === undefined ? null : el("span", { class: "badge badge-fit", title: "LLM fit score" }, `fit ${posting.fit}`),
+        posting.country ? el("span", { class: "badge", title: "Country" }, posting.country) : null,
+        posting.is_remote ? el("span", { class: "badge badge-remote" }, "Remote") : null,
+        this.fitBadge(posting),
         posting.outcome === null
           ? null
           : el("span", { class: `badge outcome-${posting.outcome}` }, OUTCOME_LABELS[posting.outcome]),

@@ -70,9 +70,9 @@ def test_repo_config_loads() -> None:
     assert AppConfig.from_yaml(repo_config).db_path.name == "job_board.db"
 
 
-def test_workday_locations_default_to_every_location(tmp_path: Path) -> None:
-    assert AppConfig.from_yaml(_write(tmp_path, "")).workday_locations == ()
-    assert AppConfig.from_yaml(_write(tmp_path, "workday_locations: [Israel, ' Cyprus ']\n")).workday_locations == ("Israel", "Cyprus")
+def test_locations_default_to_every_location(tmp_path: Path) -> None:
+    assert AppConfig.from_yaml(_write(tmp_path, "")).locations == ()
+    assert AppConfig.from_yaml(_write(tmp_path, "locations: [Israel, ' Cyprus ']\n")).locations == ("Israel", "Cyprus")
 
 
 def test_careers_url_must_be_http(tmp_path: Path) -> None:

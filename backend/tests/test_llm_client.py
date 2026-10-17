@@ -142,3 +142,30 @@ def test_missing_api_key_and_unknown_provider_are_reported() -> None:
         LlmClient.from_settings(LlmSettings(provider="groq"), {})
     with pytest.raises(ValueError, match="not listed under providers"):
         LlmClient.from_settings(LlmSettings(provider="nope"), {})
+
+
+@pytest.mark.anyio
+async def test_429_is_retried_once_honouring_retry_after() -> None:
+    answers = iter([httpx2.Response(429, headers={"Retry-After": "0"}, json={"error": {"message": "slow down"}}), httpx2.Response(200, json=_completion(ANSWER))])
+    client = _client(httpx2.MockTransport(lambda request: next(answers)), LlmSettings(max_retries=1))
+    try:
+        assert await client.score("x") == ANSWER
+    finally:
+        await client.aclose()
+
+
+@pytest.mark.anyio
+async def test_second_5xx_gives_up_after_one_retry() -> None:
+    calls: list[int] = []
+
+    def failing(request: httpx2.Request) -> httpx2.Response:
+        calls.append(1)
+        return httpx2.Response(503, headers={"Retry-After": "0"}, json={"error": {"message": "busy"}})
+
+    client = _client(httpx2.MockTransport(failing), LlmSettings(max_retries=1))
+    try:
+        with pytest.raises(LlmError):
+            await client.score("x")
+    finally:
+        await client.aclose()
+    assert len(calls) == 2

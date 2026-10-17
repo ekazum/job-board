@@ -44,4 +44,5 @@ class AshbySource(BoardSource):
         if not (external_id and title and url):
             return None
         text = as_str(job.get("descriptionPlain")) or HtmlTextParser.to_text(as_str(job.get("descriptionHtml")))
-        return JobListing(external_id=external_id, title=title, url=url, text=text.strip())
+        location = as_str(job.get("location")) + (" (remote)" if job.get("isRemote") is True else "")
+        return JobListing(external_id=external_id, title=title, url=url, text=text.strip(), location=location)

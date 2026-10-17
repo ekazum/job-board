@@ -94,4 +94,8 @@ class ComeetSource(BoardSource):
             parts.append(as_str(section.get("name")))
             parts.append(HtmlTextParser.to_text(as_str(section.get("value"))))
         text = "\n\n".join(part.strip() for part in parts if part.strip())
-        return JobListing(external_id=uid, title=title, url=url, text=text)
+        place = as_dict(position.get("location")) or {}
+        location = as_str(place.get("name"))
+        if as_str(position.get("workplace_type")).lower() == "remote":
+            location = f"{location} (remote)".strip()
+        return JobListing(external_id=uid, title=title, url=url, text=text, location=location, country=as_str(place.get("country")))

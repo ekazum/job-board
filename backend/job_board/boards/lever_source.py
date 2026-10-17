@@ -8,7 +8,7 @@ from job_board.boards.job_listing import JobListing
 from job_board.enums.platform import Platform
 from job_board.enums.source import Source
 from job_board.utils.html_text_parser import HtmlTextParser
-from job_board.utils.json_values import as_id, as_list, as_str, dicts
+from job_board.utils.json_values import as_dict, as_id, as_list, as_str, dicts
 
 API_ROOT = "https://api.lever.co/v0/postings"
 
@@ -52,4 +52,5 @@ class LeverSource(BoardSource):
             parts.append(HtmlTextParser.to_text(as_str(section.get("content"))))
         parts.append(as_str(posting.get("additionalPlain")))
         text = "\n\n".join(part.strip() for part in parts if part.strip())
-        return JobListing(external_id=external_id, title=title, url=url, text=text)
+        location = as_str((as_dict(posting.get("categories")) or {}).get("location"))
+        return JobListing(external_id=external_id, title=title, url=url, text=text, location=location)

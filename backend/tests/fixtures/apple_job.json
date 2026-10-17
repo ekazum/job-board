@@ -1,0 +1,47 @@
+{
+ "res": {
+  "id": "PIPE-200687183",
+  "jobNumber": "200687183-1451",
+  "postingTitle": "Analog Layout Automation Engineer",
+  "transformedPostingTitle": "analog-layout-automation-engineer",
+  "jobSummary": "Join Apple's Silicon Engineering Group (SEG) and be at the forefront of shaping the next generation of Apple's systems-on-chip (SOCs)! Our SOCs, featuring multi-billion transistors, are the heart of iconic devices like iPhones, iPads, and Macs. We're seeking a highly skilled Analog Layout Automation Engineer to contribute to the evolution of Analog/Mixed-Signal (AMS) circuits, covering SerDes, PLLs, and sensors, with a focus on automation and leveraging AI/ML techniques for improved design and efficiency.",
+  "description": "As an Analog Layout Automation Engineer, you’ll convert design concepts into silicon by collaborating with circuit designers and using advanced, including AI-powered, CAD tools to create high-performance analog and mixed-signal layouts. You will review floor plans, analyze circuits, run verification suites, and resolve LVS/DRC/ERC issues to deliver next-generation SOCs. You’ll also drive automation by developing scripts, improving workflows, and applying AI/ML for layout optimization, verification acceleration, advanced modeling, intelligent quality metrics, reduced manual effort, and data-driven design insights.",
+  "minimumQualifications": "BS degree in technical discipline with minimum 10 years of relevant experience",
+  "preferredQualifications": "Experience designing analog and mixed-signal layouts in deep-submicron CMOS and FinFET technologies\nStrong programming/scripting skills in SKILL, Perl, TCL, Shell, and/or Python, with emphasis on layout automation, productivity tooling, and data analysis\nSolid understanding of supervised and self-supervised learning, convolutional neural networks (CNNs), and core training concepts such as loss functions, backpropagation, and optimization\nHands-on experience with PyTorch for model development and experimentation\nDemonstrated ability to automate layout tasks, flows, and quality checks using scripting and CAD tools\nProven record in implementing high-quality analog layouts with tight device matching, low noise, and low power consumption\nFamiliarity with failure-prone circuit/layout structures, analog and DFM best practices, and the ability to diagnose and resolve layout-related issues\nStrong proficiency in custom and standard-cell floor planning, hierarchical layout assembly, and physical integration\nUnderstanding of image processing fundamentals, spatial representations, multi-channel image handling, segmentation, and object detection concepts\nTechnical understanding of IR drop, RC delay, electromigration, self-heating, coupling capacitance, and related reliability concerns\nHigh proficiency in interpreting physical verification reports, including DRC, ERC, and LVS\nExperience using advanced Cadence Virtuoso features (XL, EAD, APR, Constraint Manager), and familiarity with Cadence Innovus\nExperience with CAD automation workflows and PCell creation\nExcellent communication skills and the ability to work effectively with cross-functional teams",
+  "locations": [
+   {
+    "id": "postLocation-HFA",
+    "name": "Haifa",
+    "city": "Haifa",
+    "code": "HFA",
+    "stateProvince": "Haifa District",
+    "countryName": "Israel",
+    "countryID": "iso-country-ISR",
+    "zipCode": "31905",
+    "level": 5,
+    "active": true,
+    "postLocationCountryID": "postLocation-ISR",
+    "postingIdentifier": "1451",
+    "showPayAndBenefits": false,
+    "promotedOnLinkedIn": false
+   },
+   {
+    "id": "postLocation-HEZ",
+    "name": "Herzliya",
+    "city": "Herzliya",
+    "code": "HEZ",
+    "stateProvince": "Tel Aviv District",
+    "countryName": "Israel",
+    "countryID": "iso-country-ISR",
+    "level": 5,
+    "active": true,
+    "postLocationCountryID": "postLocation-ISR",
+    "postingIdentifier": "0865",
+    "showPayAndBenefits": false,
+    "promotedOnLinkedIn": false
+   }
+  ],
+  "positionId": "200687183",
+  "postingDate": "Oct 05, 2026"
+ }
+}

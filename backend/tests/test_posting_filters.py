@@ -91,3 +91,38 @@ def test_facets_list_companies_sources_and_unfiltered_totals(client: TestClient)
 def test_postings_carry_fit(client: TestClient) -> None:
     fits = {posting["title"]: posting["fit"] for posting in client.get("/api/postings").json()}
     assert (fits["Senior AI Engineer"], fits["ML Engineer"]) == (9, None)
+
+
+def test_archive_holds_scorer_rejects_and_is_left_out_of_the_board(client: TestClient, tmp_path: Path) -> None:
+    database = Database(tmp_path / "data" / "job_board.db")
+    with closing(database.connect()) as connection, connection:
+        connection.execute("UPDATE postings SET status = 'closed', outcome = 'not_relevant' WHERE title = 'Security Researcher'")
+    board = _titles(client)
+    archive = _titles(client, "?archived=true")
+    assert "Security Researcher" not in board and archive == ["Security Researcher"]
+    assert client.get("/api/postings/facets").json()["totals"]["closed"] == 0  # not counted on the board
+
+
+def _set(database: Database, title: str, **columns: object) -> None:
+    assignments = ", ".join(f"{column} = :{column}" for column in columns)
+    with closing(database.connect()) as connection, connection:
+        connection.execute(f"UPDATE postings SET {assignments} WHERE title = :title", {**columns, "title": title})
+
+
+def test_location_is_a_substring_with_spellings_normalized(client: TestClient, tmp_path: Path) -> None:
+    database = Database(tmp_path / "data" / "job_board.db")
+    _set(database, "Senior AI Engineer", location="Tel Aviv-Yafo, Israel")
+    _set(database, "ML Engineer", location="Petach Tikva")
+    assert _titles(client, "?location=tel-aviv") == ["Senior AI Engineer"]
+    assert _titles(client, "?location=Petah%20Tikva") == ["ML Engineer"]
+    assert _titles(client, "?location=israel&q=senior") == ["Senior AI Engineer"]
+
+
+def test_archive_holds_location_rejects_and_purge_deletes_only_them(client: TestClient, tmp_path: Path) -> None:
+    database = Database(tmp_path / "data" / "job_board.db")
+    _set(database, "Security Researcher", status="closed", outcome="not_relevant", fit_reason="location: Berlin")
+    _set(database, "ML Engineer", status="closed", outcome="not_relevant", fit=2, fit_reason="far off")  # the scorer's
+    assert _titles(client, "?archived=true") == ["ML Engineer", "Security Researcher"]
+    assert client.delete("/api/postings/location-rejects").json() == {"deleted": 1}
+    assert _titles(client, "?archived=true") == ["ML Engineer"]
+    assert len(_titles(client)) == 2

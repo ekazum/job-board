@@ -2,6 +2,7 @@
 
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Mapping
 
 from job_board.boards.board_ref import BoardRef
 from job_board.boards.board_unavailable_error import BoardUnavailableError
@@ -62,6 +63,10 @@ class BoardSource(ABC):
         response = self._checked(url, await self._http.post_json(url, payload))
         return None if response is None else self._decoded(url, response)
 
+    async def _post_form(self, url: str, fields: Mapping[str, str], headers: Mapping[str, str] | None = None) -> HttpResponse | None:
+        """POST form fields: the response on 200, None on 404/410, BoardUnavailableError otherwise."""
+        return self._checked(url, await self._http.post_form(url, fields, headers))
+
     def _checked(self, url: str, response: HttpResponse) -> HttpResponse | None:
         """The response on 200, None on 404/410, BoardUnavailableError for anything else."""
         if response.status in NOT_FOUND_STATUSES:
@@ -73,8 +78,12 @@ class BoardSource(ABC):
 
     def _decoded(self, url: str, response: HttpResponse) -> object:
         """The JSON body; BoardUnavailableError when it is not JSON."""
+        return self._parsed(url, response.text)
+
+    def _parsed(self, url: str, text: str) -> object:
+        """JSON text from url decoded; BoardUnavailableError when it is not JSON."""
         try:
-            data: object = json.loads(response.text)
+            data: object = json.loads(text)
         except json.JSONDecodeError as error:
             raise BoardUnavailableError(f"{self.platform} {url}: body is not JSON ({error.msg})") from error
         return data

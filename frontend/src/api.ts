@@ -4,11 +4,16 @@ import type {
   CompanyPatch,
   LlmSettingsView,
   LlmTestResult,
+  LocationSweepResult,
   Posting,
   PostingCreate,
   PostingFacets,
   PostingPatch,
   PostingQuery,
+  Profile,
+  ProfilePatch,
+  PurgeResult,
+  RescoreStatus,
   RunSummary,
 } from "./domain";
 import { toSearchParams } from "./filter-url";
@@ -48,6 +53,11 @@ export async function patchPosting(id: number, patch: PostingPatch): Promise<Pos
   return (await request<Posting>("PATCH", `/api/postings/${id}`, patch)).data;
 }
 
+/** Delete for good the postings the location rule archived. */
+export async function purgeLocationRejects(): Promise<PurgeResult> {
+  return (await request<PurgeResult>("DELETE", "/api/postings/location-rejects")).data;
+}
+
 export async function getCompanies(): Promise<Company[]> {
   return (await request<Company[]>("GET", "/api/companies")).data;
 }
@@ -84,6 +94,45 @@ export async function setLlmProvider(provider: string): Promise<LlmSettingsView>
 /** One tiny scoring request; failures come back in the result (ok=false), not as an HTTP error. */
 export async function testLlm(): Promise<LlmTestResult> {
   return (await request<LlmTestResult>("POST", "/api/settings/llm/test")).data;
+}
+
+/** The candidate profile (blank, with no location, before the first upload or edit). */
+export async function getProfile(): Promise<Profile> {
+  return (await request<Profile>("GET", "/api/profile")).data;
+}
+
+/** Upload a .pdf, .docx, .md or .txt CV (max 5 MB); the server extracts its text into the profile. */
+export async function uploadProfile(file: File): Promise<Profile> {
+  const form = new FormData();
+  form.append("file", file);
+  const response = await fetch("/api/profile", { method: "POST", body: form });
+  if (!response.ok) {
+    throw new ApiError(response.status, await describeFailure(response));
+  }
+  return (await response.json()) as Profile;
+}
+
+export async function patchProfile(patch: ProfilePatch): Promise<Profile> {
+  return (await request<Profile>("PATCH", "/api/profile", patch)).data;
+}
+
+/** Apply the profile's location to the stored postings without scoring; 409 while Re-score all runs. */
+export async function applyLocations(): Promise<LocationSweepResult> {
+  return (await request<LocationSweepResult>("POST", "/api/rescore/locations")).data;
+}
+
+/** Apply the location rule, then start Re-score all in the background; 409 while one is running. */
+export async function startRescore(): Promise<RescoreStatus> {
+  return (await request<RescoreStatus>("POST", "/api/rescore")).data;
+}
+
+export async function getRescoreStatus(): Promise<RescoreStatus> {
+  return (await request<RescoreStatus>("GET", "/api/rescore/status")).data;
+}
+
+/** Apply the location rule to one posting and score it unless that archived it. */
+export async function rescorePosting(id: number): Promise<Posting> {
+  return (await request<Posting>("POST", `/api/rescore/${id}`)).data;
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {

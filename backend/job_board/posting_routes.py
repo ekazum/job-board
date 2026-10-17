@@ -5,17 +5,19 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Response, status
 
 from job_board.enums.source import Source
+from job_board.location_rule import LocationRule
 from job_board.models.posting import Posting
 from job_board.models.posting_facets import PostingFacets
 from job_board.models.posting_create import PostingCreate
 from job_board.models.posting_patch import PostingPatch
+from job_board.models.purge_result import PurgeResult
 from job_board.posting_filter import PostingFilter
 from job_board.posting_repository import PostingRepository
 from job_board.url_normalizer import UrlNormalizer
 
 
 class PostingRoutes:
-    """List, paste and update postings."""
+    """List, paste, update postings, and purge the location rule's rejects."""
 
     def __init__(self, repository: PostingRepository, normalizer: UrlNormalizer | None = None) -> None:
         self._repository = repository
@@ -33,6 +35,7 @@ class PostingRoutes:
             status_code=status.HTTP_201_CREATED,
             responses={status.HTTP_200_OK: {"model": Posting, "description": "Already on the board; returned unchanged"}},
         )
+        router.add_api_route("/location-rejects", self.purge_location_rejects, methods=["DELETE"])
         router.add_api_route(
             "/{posting_id}",
             self.patch_posting,
@@ -48,6 +51,10 @@ class PostingRoutes:
         source: Annotated[list[Source] | None, Query(description="Only these sources (repeatable)")] = None,
         min_fit: Annotated[int | None, Query(ge=0, le=10, description="Fit at least this; unscored postings always pass")] = None,
         in_text: Annotated[bool, Query(description="Match q in the description too")] = False,
+        location: Annotated[str | None, Query(description="Substring of the location; spellings normalized")] = None,
+        archived: Annotated[
+            bool, Query(description="The Archive: postings the scorer or the location rule closed as not relevant")
+        ] = False,
     ) -> list[Posting]:
         """Postings matching the filter bar, newest first; without parameters, all of them."""
         posting_filter = PostingFilter(
@@ -56,6 +63,8 @@ class PostingRoutes:
             companies=tuple(company or ()),
             sources=tuple(source or ()),
             min_fit=min_fit,
+            location=location or "",
+            archived=archived,
         )
         return self._repository.search(posting_filter)
 
@@ -76,10 +85,15 @@ class PostingRoutes:
             title=body.title,
             url=body.url,
             text=body.text,
-        )
+            is_remote=LocationRule.is_remote(location="", title=body.title, text=body.text),
+        )  # no location given, so no country: the location rule only decides scanned jobs
         if not created:
             response.status_code = status.HTTP_200_OK
         return posting
+
+    def purge_location_rejects(self) -> PurgeResult:
+        """Delete for good the postings the location rule archived (a later scan finds them again if still listed)."""
+        return PurgeResult(deleted=self._repository.delete_location_rejects())
 
     def patch_posting(self, posting_id: int, body: PostingPatch) -> Posting:
         """Change status, outcome and/or note. Leaving closed clears the outcome."""

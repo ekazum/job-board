@@ -1,16 +1,19 @@
 import "./style.css";
 
 import { errorMessage, getPostingFacets, getPostings } from "./api";
+import { ArchiveView } from "./archive-view";
 import { Board } from "./board";
 import { CompaniesView } from "./companies-view";
+import { ConfirmDialog } from "./confirm-dialog";
 import { el } from "./dom";
-import type { Posting, PostingQuery } from "./domain";
+import { isArchived, type Posting, type PostingQuery } from "./domain";
 import { FilterBar } from "./filter-bar";
 import { fromSearchParams, isEmpty, loadRemembered, remember, writeToUrl } from "./filter-url";
 import { Notice } from "./notice";
 import { OutcomeDialog } from "./outcome-dialog";
 import { PasteForm } from "./paste-form";
 import { PostingDetails } from "./posting-details";
+import { ProfileView } from "./profile-view";
 import { SettingsView } from "./settings-view";
 import { SidePanel } from "./side-panel";
 
@@ -22,9 +25,12 @@ if (app === null) {
 const notice = new Notice(document.body);
 const panel = new SidePanel(document.body);
 const outcomeDialog = new OutcomeDialog(document.body);
+const confirmDialog = new ConfirmDialog(document.body);
 
 const boardTab = el("a", { href: "#board", class: "tab" }, "Board");
+const archiveTab = el("a", { href: "#archive", class: "tab" }, "Archive");
 const companiesTab = el("a", { href: "#companies", class: "tab" }, "Companies");
+const profileTab = el("a", { href: "#profile", class: "tab" }, "Profile");
 const settingsTab = el("a", { href: "#settings", class: "tab" }, "Settings");
 const addButton = el("button", { type: "button", class: "button-primary topbar-action" }, "Add posting");
 const boardRoot = el("main", { class: "board" });
@@ -34,6 +40,15 @@ const detailsKey = (posting: Posting): string => `posting:${posting.id}`;
 
 const details = new PostingDetails({
   onSaved: (posting) => board.upsert(posting),
+  onRefresh: (posting) => {
+    if (isArchived(posting)) {
+      notice.info(`Moved to the Archive: ${posting.fit_reason ?? "not relevant"}`);
+      void loadPostings();
+    } else {
+      board.upsert(posting);
+    }
+    openDetails(posting);
+  },
   onError: (message) => notice.error(message),
 });
 
@@ -75,6 +90,21 @@ const filterBar = new FilterBar({
 });
 const boardView = el("section", { class: "board-view", "aria-label": "Board" }, filterBar.element, boardRoot);
 
+const archiveView = new ArchiveView(confirmDialog, {
+  onReopened: (posting) => {
+    notice.info(`Re-opened “${posting.title}”`);
+    void loadPostings();
+  },
+  onInfo: (message) => notice.info(message),
+  onError: (message) => notice.error(message),
+});
+
+const profileView = new ProfileView({
+  onPostingsChanged: () => void loadPostings(),
+  onInfo: (message) => notice.info(message),
+  onError: (message) => notice.error(message),
+});
+
 const settingsView = new SettingsView({
   onInfo: (message) => notice.info(message),
   onError: (message) => notice.error(message),
@@ -85,11 +115,13 @@ app.replaceChildren(
     "header",
     { class: "topbar" },
     el("h1", {}, "job-board"),
-    el("nav", { class: "tabs", "aria-label": "Views" }, boardTab, companiesTab, settingsTab),
+    el("nav", { class: "tabs", "aria-label": "Views" }, boardTab, archiveTab, companiesTab, profileTab, settingsTab),
     addButton,
   ),
   boardView,
+  archiveView.element,
   companiesView.element,
+  profileView.element,
   settingsView.element,
 );
 
@@ -123,21 +155,26 @@ function markCurrent(tab: HTMLElement, current: boolean): void {
   }
 }
 
-/** #companies and #settings show those views; anything else shows the board. */
+/** The views besides the board, each behind its own tab and URL hash. */
+const views = [
+  { hash: "#archive", tab: archiveTab, view: archiveView },
+  { hash: "#companies", tab: companiesTab, view: companiesView },
+  { hash: "#profile", tab: profileTab, view: profileView },
+  { hash: "#settings", tab: settingsTab, view: settingsView },
+];
+
+/** A view's hash shows that view (and loads it); anything else shows the board. */
 function showView(): void {
-  const companies = window.location.hash === "#companies";
-  const settings = window.location.hash === "#settings";
-  boardView.hidden = companies || settings;
-  companiesView.element.hidden = !companies;
-  settingsView.element.hidden = !settings;
-  markCurrent(boardTab, !companies && !settings);
-  markCurrent(companiesTab, companies);
-  markCurrent(settingsTab, settings);
-  if (companies) {
-    void companiesView.load();
-  }
-  if (settings) {
-    void settingsView.load();
+  const current = views.find(({ hash }) => hash === window.location.hash);
+  boardView.hidden = current !== undefined;
+  markCurrent(boardTab, current === undefined);
+  for (const entry of views) {
+    const shown = entry === current;
+    entry.view.element.hidden = !shown;
+    markCurrent(entry.tab, shown);
+    if (shown) {
+      void entry.view.load();
+    }
   }
 }
 

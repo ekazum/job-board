@@ -164,6 +164,8 @@ def test_version_1_file_is_migrated_and_keeps_its_rows(tmp_path: Path) -> None:
         company = connection.execute("SELECT name, platform, slug, verified, enabled, last_error FROM companies").fetchone()
         posting = connection.execute("SELECT status, outcome, title FROM postings").fetchone()
         connection.execute(INSERT_COMPANY, {"name": "Nvidia", "platform": Platform.WORKDAY})  # allowed only after v2
+        connection.execute(INSERT_COMPANY, {"name": "Google", "platform": Platform.GOOGLE})  # allowed only after v5
+        assert _insert_posting(connection, source=Source.AMAZON) == 1
     assert tuple(company) == ("Acme", "greenhouse", "acme", 1, 0, None)
     assert tuple(posting) == ("closed", "offer", "Backend Engineer")
     database.initialize()  # nothing left to migrate
@@ -203,3 +205,21 @@ def test_fit_must_be_between_0_and_10(database: Database) -> None:
         connection.execute("UPDATE postings SET fit = 10 WHERE external_id = :external_id", POSTING)
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute("UPDATE postings SET fit = 11 WHERE external_id = :external_id", POSTING)
+
+
+def test_v1_file_reaches_the_latest_version_with_a_blank_profile(tmp_path: Path) -> None:
+    path = tmp_path / "v1.db"
+    shutil.copyfile(FIXTURES / "job_board_v1.db", path)
+    Database(path).initialize()
+    with closing(sqlite3.connect(path)) as connection:
+        columns = {row[1] for row in connection.execute("SELECT * FROM pragma_table_info('postings')")}
+        profile = connection.execute("SELECT cv_text, location, allow_fully_remote FROM profile").fetchall()
+    assert {"fit", "location", "fit_reason", "fit_gaps", "is_remote", "country"} <= columns
+    assert profile == [("", "", 0)]  # created by migration 6: no location, so nothing passes until one is set
+
+
+def test_profile_table_holds_one_row_created_with_the_schema(database: Database) -> None:
+    with closing(database.connect()) as connection:
+        assert [tuple(row) for row in connection.execute("SELECT id, location, allow_fully_remote FROM profile")] == [(1, "", 0)]
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute("INSERT INTO profile (id, cv_text) VALUES (2, 'second')")

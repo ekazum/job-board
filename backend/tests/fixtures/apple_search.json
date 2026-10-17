@@ -1,0 +1,168 @@
+{
+ "res": {
+  "searchResults": [
+   {
+    "id": "200687183-1451",
+    "jobSummary": "Join Apple's Silicon Engineering Group (SEG) and be at the forefront of shaping the next generation of Apple's systems-on-chip (SOCs)! Our SOCs, featuring multi-billion transistors, are the heart of iconic devices like iPhones, iPads, and Macs. We're seeking a highly skilled Analog Layout Automation Engineer to contribute to the evolution of Analog/Mixed-Signal (AMS) circuits, covering SerDes, PLLs, and sensors, with a focus on automation and leveraging AI/ML techniques for improved design and efficiency.",
+    "locations": [
+     {
+      "postLocationId": "postLocation-HFA",
+      "city": "",
+      "stateProvince": "",
+      "countryName": "Israel",
+      "metro": "",
+      "region": "",
+      "name": "Haifa",
+      "countryID": "iso-country-ISR",
+      "level": 5
+     }
+    ],
+    "positionId": "200687183",
+    "postingDate": "Oct 05, 2026",
+    "postingTitle": "Analog Layout Automation Engineer",
+    "localeInfo": {
+     "languageCode": "en_US",
+     "dateFormat": "MMM D, YYYY",
+     "defaultLocaleCode": "en-us"
+    },
+    "postDateInGMT": "2026-10-05T12:31:39.163Z",
+    "transformedPostingTitle": "analog-layout-automation-engineer",
+    "reqId": "200687183-1451",
+    "managedPipelineRole": false,
+    "standardWeeklyHours": 42,
+    "team": {
+     "teamName": "Hardware",
+     "teamID": "teamsAndSubTeams-HRDWR",
+     "teamCode": "HRDWR"
+    },
+    "type": "PIPE",
+    "homeOffice": false,
+    "jobPositionId": "PIPE-200687183",
+    "isMultiLocation": true,
+    "postExternal": true
+   },
+   {
+    "id": "200687183-0865",
+    "jobSummary": "Join Apple's Silicon Engineering Group (SEG) and be at the forefront of shaping the next generation of Apple's systems-on-chip (SOCs)! Our SOCs, featuring multi-billion transistors, are the heart of iconic devices like iPhones, iPads, and Macs. We're seeking a highly skilled Analog Layout Automation Engineer to contribute to the evolution of Analog/Mixed-Signal (AMS) circuits, covering SerDes, PLLs, and sensors, with a focus on automation and leveraging AI/ML techniques for improved design and efficiency.",
+    "locations": [
+     {
+      "postLocationId": "postLocation-HEZ",
+      "city": "",
+      "stateProvince": "",
+      "countryName": "Israel",
+      "metro": "",
+      "region": "",
+      "name": "Herzliya",
+      "countryID": "iso-country-ISR",
+      "level": 5
+     }
+    ],
+    "positionId": "200687183",
+    "postingDate": "Oct 05, 2026",
+    "postingTitle": "Analog Layout Automation Engineer",
+    "localeInfo": {
+     "languageCode": "en_US",
+     "dateFormat": "MMM D, YYYY",
+     "defaultLocaleCode": "en-us"
+    },
+    "postDateInGMT": "2026-10-05T12:31:39.163Z",
+    "transformedPostingTitle": "analog-layout-automation-engineer",
+    "reqId": "200687183-0865",
+    "managedPipelineRole": false,
+    "standardWeeklyHours": 42,
+    "team": {
+     "teamName": "Hardware",
+     "teamID": "teamsAndSubTeams-HRDWR",
+     "teamCode": "HRDWR"
+    },
+    "type": "PIPE",
+    "homeOffice": false,
+    "jobPositionId": "PIPE-200687183",
+    "isMultiLocation": true,
+    "postExternal": true
+   },
+   {
+    "id": "200682904-0865",
+    "jobSummary": "We are looking for a physicist, electro-optical engineer, or computational-photonics researcher to join our growing Advanced Optics team in Herzliya. The Apple Camera Hardware Engineering group is responsible for research, design, development, test, and qualification of camera hardware for Apple products; our team owns the end-to-end design, production, and testing of high-quality micro- and nano-optic components, including diffractive elements and metasurfaces. The environment is collaborative and hands-on, fostering engineering excellence and creativity across the interdisciplinary boundary of optical design, numerical simulation, optimization, and semiconductor fabrication methods.",
+    "locations": [
+     {
+      "postLocationId": "postLocation-HEZ",
+      "city": "",
+      "stateProvince": "",
+      "countryName": "Israel",
+      "metro": "",
+      "region": "",
+      "name": "Herzliya",
+      "countryID": "iso-country-ISR",
+      "level": 5
+     }
+    ],
+    "positionId": "200682904",
+    "postingDate": "Sep 10, 2026",
+    "postingTitle": "Advanced Optics Design Engineer — Camera HW",
+    "localeInfo": {
+     "languageCode": "en_US",
+     "dateFormat": "MMM D, YYYY",
+     "defaultLocaleCode": "en-us"
+    },
+    "postDateInGMT": "2026-09-10T07:12:55.522Z",
+    "transformedPostingTitle": "advanced-optics-design-engineer-camera-hw",
+    "reqId": "200682904-0865",
+    "managedPipelineRole": false,
+    "standardWeeklyHours": 42,
+    "team": {
+     "teamName": "Hardware",
+     "teamID": "teamsAndSubTeams-HRDWR",
+     "teamCode": "HRDWR"
+    },
+    "type": "PIPE",
+    "homeOffice": false,
+    "jobPositionId": "PIPE-200682904",
+    "isMultiLocation": false,
+    "postExternal": true
+   },
+   {
+    "id": "200681169-0865",
+    "jobSummary": "We are looking for an electro-optics test engineer to join our growing Advanced Optics team in Herzliya. The Apple Camera Hardware Engineering group is responsible for the design, development, test, and qualification of camera hardware for Apple products; our team owns the end-to-end design, production, and testing of high-quality micro- and nano-optic components, including diffractive elements and metasurfaces. In this role you will own how we measure those components — developing new optical test setups, characterizing performance against design intent, and defining the metrology that carries a component from first prototype to mass production. The environment is collaborative and hands-on, spanning optical design, numerical simulation, precision measurement, and semiconductor fabrication.",
+    "locations": [
+     {
+      "postLocationId": "postLocation-HEZ",
+      "city": "",
+      "stateProvince": "",
+      "countryName": "Israel",
+      "metro": "",
+      "region": "",
+      "name": "Herzliya",
+      "countryID": "iso-country-ISR",
+      "level": 5
+     }
+    ],
+    "positionId": "200681169",
+    "postingDate": "Sep 09, 2026",
+    "postingTitle": "Advanced Optics Lead Test Engineer — Camera HW",
+    "localeInfo": {
+     "languageCode": "en_US",
+     "dateFormat": "MMM D, YYYY",
+     "defaultLocaleCode": "en-us"
+    },
+    "postDateInGMT": "2026-09-09T08:28:32.360Z",
+    "transformedPostingTitle": "advanced-optics-lead-test-engineer-camera-hw",
+    "reqId": "200681169-0865",
+    "managedPipelineRole": false,
+    "standardWeeklyHours": 42,
+    "team": {
+     "teamName": "Hardware",
+     "teamID": "teamsAndSubTeams-HRDWR",
+     "teamCode": "HRDWR"
+    },
+    "type": "PIPE",
+    "homeOffice": false,
+    "jobPositionId": "PIPE-200681169",
+    "isMultiLocation": false,
+    "postExternal": true
+   }
+  ],
+  "totalRecords": 4,
+  "talentLimitDetails": {}
+ }
+}

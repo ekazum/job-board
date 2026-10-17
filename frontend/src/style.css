@@ -140,6 +140,7 @@ textarea {
 
 .button-primary,
 .button-ghost,
+.button-danger,
 .icon-button {
   border-radius: 6px;
   cursor: pointer;
@@ -159,6 +160,14 @@ textarea {
   background: transparent;
 }
 
+.button-danger {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--danger);
+  background: var(--danger);
+  color: var(--surface);
+  font-weight: 600;
+}
+
 .icon-button {
   width: 2rem;
   height: 2rem;
@@ -172,6 +181,11 @@ textarea {
 select:disabled {
   opacity: 0.6;
   cursor: progress;
+}
+
+.button-ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 button:hover:not(:disabled) {
@@ -208,6 +222,15 @@ button:hover:not(:disabled) {
 
 .filter-search {
   width: 16rem;
+  max-width: 100%;
+  padding: 0.4rem 0.55rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.filter-location {
+  width: 10rem;
   max-width: 100%;
   padding: 0.4rem 0.55rem;
   background: var(--bg);
@@ -373,6 +396,17 @@ button:hover:not(:disabled) {
   margin-top: 0.15rem;
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+.card-location {
+  display: -webkit-box;
+  margin-top: 0.1rem;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 0.8rem;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
 }
 
 .card-meta {
@@ -926,5 +960,151 @@ button:hover:not(:disabled) {
 }
 
 .notice[hidden] {
+  display: none;
+}
+
+/* --- fit ----------------------------------------------------------------------------------------------- */
+
+.badge-unscored {
+  border-style: dashed;
+}
+
+/* --- location ------------------------------------------------------------------------------------------ */
+
+.badge-remote {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.badge-location {
+  border-color: var(--outcome-not_relevant);
+  color: var(--outcome-not_relevant);
+}
+
+.details-fit p {
+  margin: 0.25rem 0;
+}
+
+.fit-gaps {
+  margin: 0.25rem 0 0.5rem;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* --- archive view -------------------------------------------------------------------------------------- */
+
+.archive-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 960px;
+  height: calc(100vh - var(--topbar-height));
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.archive-header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.archive-purge {
+  margin-left: auto;
+}
+
+.archive-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.archive-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 0.9rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.archive-main {
+  min-width: 0;
+}
+
+.archive-main p {
+  margin: 0.2rem 0 0;
+}
+
+.archive-reason {
+  font-size: 0.9rem;
+}
+
+.archive-gaps {
+  font-size: 0.85rem;
+}
+
+/* --- profile view -------------------------------------------------------------------------------------- */
+
+.profile-view {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+  max-width: 860px;
+  height: calc(100vh - var(--topbar-height));
+  padding: 1.25rem 1rem;
+  overflow-y: auto;
+}
+
+.drop-zone {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  background: var(--surface);
+  border: 2px dashed var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.drop-zone:focus-visible,
+.drop-zone-active {
+  border-color: var(--accent);
+  outline: none;
+}
+
+.drop-zone-busy {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.profile-location > label:first-child {
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.profile-location #profile-location {
+  max-width: 24rem;
+}
+
+.profile-location .filter-check input {
+  width: auto;
+}
+
+.profile-location p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+.profile-country {
+  font-size: 0.85rem;
+}
+
+.profile-view progress {
+  width: 12rem;
+}
+
+.profile-view progress[hidden] {
   display: none;
 }

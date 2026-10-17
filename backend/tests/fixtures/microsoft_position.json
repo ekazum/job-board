@@ -1,0 +1,59 @@
+{
+ "status": 200,
+ "error": {
+  "message": "",
+  "body": ""
+ },
+ "data": {
+  "id": 1970393556959639,
+  "displayJobId": "200047798",
+  "name": "Security Researcher II /Senior Security Researcher - Microsoft Defender (Multiple Roles)",
+  "locations": [
+   "Israel, Multiple Locations, Multiple Locations",
+   "Israel, Tel Aviv, Herzliya",
+   "Israel, Tel Aviv, Tel Aviv",
+   "Israel, Southern, Beer-Sheva",
+   "Israel, Haifa, Haifa",
+   "Israel, Northern, Nazareth"
+  ],
+  "standardizedLocations": [
+   "IL",
+   "Herzliya, Tel Aviv District, IL",
+   "Tel Aviv-Yafo, Tel Aviv District, IL",
+   "ב\"ש, South District, IL",
+   "Haifa, Haifa District, IL",
+   "Nazareth, North District, IL"
+  ],
+  "postedTs": 1786385421,
+  "stars": 0,
+  "department": "Security Research",
+  "creationTs": 1786371382,
+  "jobDescription": "<b>Overview</b><br><div><p><span>Join one of the elite research teams powering Microsoft Defender, the dominant market leader in </span><span>XDR</span><span>, </span><span>SIEM</span><span>, </span><span>Cloud, </span><span>and </span><span>AI Security</span><span>. We protect the world’s largest enterprises by analyzing trillions of signals to protect against sophisticated cyberattacks across hybrid and multi-cloud environments.</span><span> </span></p></div><div><p><span><strong>We are currently hiring for multiple Security Research positions across our </strong></span><strong><span>Microsoft Defender Research teams in Israel.</span></strong><span> By applying to this </span><span>unified pipeline</span><span>, you will be considered for a high-impact role (at either the </span><span>Security Researcher II </span><span>or </span><span>Senior Security Researcher </span><span>role) within </span><span>one of </span><span>our specialized groups, including </span><span>Autonomous Attack Disruption</span><span>, </span><span>Cloud Workload Protection</span><span>, </span><span>Identity Research</span><span>, </span><span>Posture Research</span><span>, or </span><span>Security for AI</span><span>.</span><span> </span></p>",
+  "location": "Israel, Multiple Locations, Multiple Locations",
+  "isHot": 0,
+  "workLocationOption": "onsite",
+  "locationFlexibility": null,
+  "atsJobId": "200047798",
+  "positionUrl": "/careers/job/1970393556959639",
+  "publicUrl": "https://apply.careers.microsoft.com/careers/job/1970393556959639",
+  "efcustomTextWorkSite": [
+   "3 days / week in-office"
+  ],
+  "efcustomTextRequiredTravel": [
+   "Less than 25%"
+  ],
+  "efcustomTextCurrentProfession": [
+   "Security Engineering"
+  ],
+  "efcustomTextTaDisciplineName": [
+   "Security Research"
+  ],
+  "efcustomTextRoletype": [
+   "Individual Contributor"
+  ],
+  "efcustomTextEmploymentType": [
+   "Full-Time"
+  ]
+ },
+ "metadata": null
+}

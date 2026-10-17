@@ -2,7 +2,19 @@ import type { PostingQuery, Source } from "./domain";
 
 const STORAGE_KEY = "job-board.filter";
 // Record<Source, …> makes the compiler flag a source added on the backend but missing here.
-const SOURCE_NAMES: Record<Source, true> = { greenhouse: true, lever: true, ashby: true, comeet: true, workday: true, manual: true };
+const SOURCE_NAMES: Record<Source, true> = {
+  greenhouse: true,
+  lever: true,
+  ashby: true,
+  comeet: true,
+  workday: true,
+  google: true,
+  microsoft: true,
+  apple: true,
+  amazon: true,
+  meta: true,
+  manual: true,
+};
 const SOURCES = Object.keys(SOURCE_NAMES) as Source[];
 
 /** The filter as GET /api/postings query parameters (company and source repeated, empty values left out). */
@@ -23,6 +35,12 @@ export function toSearchParams(query: PostingQuery): URLSearchParams {
   if (query.in_text) {
     params.set("in_text", "true");
   }
+  if (query.location) {
+    params.set("location", query.location);
+  }
+  if (query.archived) {
+    params.set("archived", "true");
+  }
   return params;
 }
 
@@ -35,6 +53,7 @@ export function fromSearchParams(params: URLSearchParams): PostingQuery {
     source: params.getAll("source").filter((value): value is Source => SOURCES.some((source) => source === value)),
     min_fit: Number.isInteger(minFit) && minFit > 0 && minFit <= 10 ? minFit : null,
     in_text: params.get("in_text") === "true",
+    location: params.get("location") ?? "",
   };
 }
 

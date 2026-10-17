@@ -48,6 +48,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/postings/location-rejects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Purge Location Rejects
+         * @description Delete for good the postings the location rule archived (a later scan finds them again if still listed).
+         */
+        delete: operations["purge_location_rejects"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/postings/{posting_id}": {
         parameters: {
             query?: never;
@@ -213,10 +233,123 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Profile
+         * @description The profile (blank, with no location, until you upload a CV or edit it).
+         */
+        get: operations["get_profile"];
+        put?: never;
+        /**
+         * Upload Profile
+         * @description Extract the CV's text into the profile (targets and location are kept) and store the original file.
+         */
+        post: operations["upload_profile"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Patch Profile
+         * @description Edit the extracted text, the targets, the location and/or allow_fully_remote.
+         */
+        patch: operations["patch_profile"];
+        trace?: never;
+    };
+    "/api/rescore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start Rescore
+         * @description Apply the location rule to every stored posting, then begin scoring those not scored yet or still in New.
+         */
+        post: operations["start_rescore"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rescore/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Rescore Status
+         * @description Progress of the current or last Re-score all.
+         */
+        get: operations["rescore_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rescore/locations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply Locations
+         * @description Apply the profile's location as it now stands to the stored postings, without scoring.
+         */
+        post: operations["apply_locations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/rescore/{posting_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rescore Posting
+         * @description Apply the location rule to one posting and score it unless that archived it.
+         */
+        post: operations["rescore_posting"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** Body_upload_profile */
+        Body_upload_profile: {
+            /** File */
+            file: string;
+        };
         /**
          * Company
          * @description A company as stored in the companies table; platform is None until discovery has run.
@@ -327,6 +460,16 @@ export interface components {
             error: string | null;
         };
         /**
+         * LocationSweepResult
+         * @description archived: postings moved from New to the Archive; restored: postings the rule had archived, back in New.
+         */
+        LocationSweepResult: {
+            /** Archived */
+            archived: number;
+            /** Restored */
+            restored: number;
+        };
+        /**
          * Outcome
          * @description Why a posting was closed; set only when its status is closed.
          * @enum {string}
@@ -336,11 +479,12 @@ export interface components {
          * Platform
          * @description Applicant-tracking system behind a company's careers page.
          *
+         *     GOOGLE, MICROSOFT, APPLE, AMAZON and META are single-company careers sites with their own JSON search APIs.
          *     NONE means discovery ran and found no supported platform (a proprietary portal);
          *     a NULL platform in the database means discovery has not run yet.
          * @enum {string}
          */
-        Platform: "greenhouse" | "lever" | "ashby" | "comeet" | "workday" | "none";
+        Platform: "greenhouse" | "lever" | "ashby" | "comeet" | "workday" | "google" | "microsoft" | "apple" | "amazon" | "meta" | "none";
         /**
          * Posting
          * @description A job posting as stored in the postings table and returned by the API.
@@ -370,6 +514,22 @@ export interface components {
             created_at: string;
             /** Fit */
             fit?: number | null;
+            /**
+             * Location
+             * @default
+             */
+            location?: string;
+            /** Fit Reason */
+            fit_reason?: string | null;
+            /** Fit Gaps */
+            fit_gaps?: string[];
+            /**
+             * Is Remote
+             * @default false
+             */
+            is_remote?: boolean;
+            /** Country */
+            country?: string | null;
         };
         /**
          * PostingCreate
@@ -416,6 +576,80 @@ export interface components {
             note?: string | null;
         };
         /**
+         * Profile
+         * @description cv_text is extracted from the uploaded CV (and editable); targets says what the candidate is looking for.
+         *
+         *     location (a country or a city) and allow_fully_remote decide which postings are kept (see LocationRule). The
+         *     profile starts blank with an empty location, so no posting passes until you set one.
+         */
+        Profile: {
+            /**
+             * Cv Text
+             * @default
+             */
+            cv_text: string;
+            /**
+             * Targets
+             * @default
+             */
+            targets: string;
+            /** Filename */
+            filename: string | null;
+            /** Uploaded At */
+            uploaded_at: string | null;
+            /**
+             * Location
+             * @default
+             */
+            location: string;
+            /**
+             * Allow Fully Remote
+             * @default false
+             */
+            allow_fully_remote: boolean;
+            /**
+             * Country
+             * @description The country (or countries) the location resolves to, e.g. "IL"; None when it does not resolve.
+             */
+            readonly country: string | null;
+        };
+        /**
+         * ProfilePatch
+         * @description Fields left out (or null) stay as they are; location is trimmed.
+         */
+        ProfilePatch: {
+            /** Cv Text */
+            cv_text?: string | null;
+            /** Targets */
+            targets?: string | null;
+            /** Location */
+            location?: string | null;
+            /** Allow Fully Remote */
+            allow_fully_remote?: boolean | null;
+        };
+        /**
+         * PurgeResult
+         * @description deleted: postings removed for good.
+         */
+        PurgeResult: {
+            /** Deleted */
+            deleted: number;
+        };
+        /**
+         * RescoreStatus
+         * @description done of total postings scored so far; running is false before the first run and after one finishes.
+         */
+        RescoreStatus: {
+            /** Running */
+            running: boolean;
+            /** Done */
+            done: number;
+            /** Total */
+            total: number;
+            /** Error */
+            error?: string | null;
+        };
+        /**
          * RunSummary
          * @description ok: companies processed; failed: companies whose error was saved to companies.last_error; duration_s: wall time.
          */
@@ -432,7 +666,7 @@ export interface components {
          * @description Where a posting came from: a scanned platform, or pasted by hand.
          * @enum {string}
          */
-        Source: "greenhouse" | "lever" | "ashby" | "comeet" | "workday" | "manual";
+        Source: "greenhouse" | "lever" | "ashby" | "comeet" | "workday" | "google" | "microsoft" | "apple" | "amazon" | "meta" | "manual";
         /**
          * Status
          * @description Board column a posting sits in.
@@ -474,6 +708,10 @@ export interface operations {
                 min_fit?: number | null;
                 /** @description Match q in the description too */
                 in_text?: boolean;
+                /** @description Substring of the location; spellings normalized */
+                location?: string | null;
+                /** @description The Archive: postings the scorer or the location rule closed as not relevant */
+                archived?: boolean;
             };
             header?: never;
             path?: never;
@@ -559,6 +797,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PostingFacets"];
+                };
+            };
+        };
+    };
+    purge_location_rejects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PurgeResult"];
                 };
             };
         };
@@ -832,6 +1090,209 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["LlmTestResult"];
+                };
+            };
+        };
+    };
+    get_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+        };
+    };
+    upload_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_profile"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description File larger than 5 MB */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unsupported or unreadable file */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    patch_profile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ProfilePatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Profile"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_rescore: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescoreStatus"];
+                };
+            };
+            /** @description Re-score all is already running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rescore_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RescoreStatus"];
+                };
+            };
+        };
+    };
+    apply_locations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LocationSweepResult"];
+                };
+            };
+            /** @description Re-score all is running */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    rescore_posting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                posting_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Posting"];
+                };
+            };
+            /** @description No posting with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -63,4 +63,5 @@ class GreenhouseSource(BoardSource):
         if not (external_id and title and url):
             return None
         text = HtmlTextParser.to_text(html.unescape(as_str(job.get("content"))))
-        return JobListing(external_id=external_id, title=title, url=url, text=text)
+        location = as_str((as_dict(job.get("location")) or {}).get("name"))
+        return JobListing(external_id=external_id, title=title, url=url, text=text, location=location)

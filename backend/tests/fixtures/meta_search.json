@@ -1,0 +1,91 @@
+{
+ "data": {
+  "job_search_with_featured_jobs_v2": {
+   "all_jobs": [
+    {
+     "id": "2082780019279407",
+     "title": "Software Engineer, Systems",
+     "locations": [
+      "Tel Aviv, Israel"
+     ],
+     "teams": [
+      "Software Engineering"
+     ],
+     "sub_teams": [
+      "Engineering"
+     ]
+    },
+    {
+     "id": "1063563173314893",
+     "title": "Software Engineer, ML (Technical Leadership)",
+     "locations": [
+      "Tel Aviv, Israel"
+     ],
+     "teams": [
+      "Software Engineering"
+     ],
+     "sub_teams": [
+      "Machine Learning"
+     ]
+    },
+    {
+     "id": "2316600655751692",
+     "title": "Machine Learning Engineer",
+     "locations": [
+      "Tel Aviv, Israel"
+     ],
+     "teams": [
+      "Software Engineering"
+     ],
+     "sub_teams": [
+      "Machine Learning"
+     ]
+    }
+   ],
+   "featured_jobs": [
+    {
+     "id": "1690022942358388",
+     "title": "Critical Facility Engineer",
+     "locations": [
+      "Henrico, VA",
+      "Mesa, AZ",
+      "Kansas City, MO",
+      "Ashburn, VA",
+      "Temple, TX",
+      "Rayville, LA",
+      "Gallatin, TN",
+      "Menlo Park, CA",
+      "Montgomery, AL",
+      "Jeffersonville, IN",
+      "Papillion, NE",
+      "Beaver Dam, WI",
+      "Prineville, OR",
+      "Cheyenne, WY",
+      "Lebanon, IN",
+      "Goodyear, AZ",
+      "El Paso, TX",
+      "Bowling Green, OH",
+      "Cedar Rapids, IA",
+      "DeKalb, IL",
+      "New Albany, OH",
+      "Tulsa, OK",
+      "Huntsville, AL",
+      "Rosemount, MN",
+      "Eagle Mountain, UT"
+     ],
+     "teams": [
+      "Data Center"
+     ],
+     "sub_teams": [
+      "Data Center Operations"
+     ]
+    }
+   ],
+   "featured_jobs_title": "Featured Jobs",
+   "all_jobs_title": "All Jobs"
+  }
+ },
+ "extensions": {
+  "is_final": true
+ }
+}

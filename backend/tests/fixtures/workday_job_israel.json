@@ -11,6 +11,18 @@
     "postedOn": "Posted 30+ Days Ago",
     "jobReqId": "JR2025357",
     "jobPostingId": "Senior-System-Software-Engineer---Signing-Platform_JR2025357-1",
-    "externalUrl": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/job/Israel-Raanana/Senior-System-Software-Engineer---Signing-Platform_JR2025357-1"
+    "externalUrl": "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite/job/Israel-Raanana/Senior-System-Software-Engineer---Signing-Platform_JR2025357-1",
+    "country": {
+      "descriptor": "Israel",
+      "id": "084562884af243748dad7c84c304d89a"
+    },
+    "jobRequisitionLocation": {
+      "descriptor": "Israel, Raanana",
+      "country": {
+        "descriptor": "Israel",
+        "id": "084562884af243748dad7c84c304d89a",
+        "alpha2Code": "IL"
+      }
+    }
   }
 }

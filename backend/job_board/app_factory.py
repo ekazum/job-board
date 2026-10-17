@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -17,11 +18,18 @@ from job_board.company_routes import CompanyRoutes
 from job_board.config_editor import ConfigEditor
 from job_board.database import Database
 from job_board.discover import Discover
+from job_board.location_rule import LocationRule
+from job_board.location_sweep import LocationSweep
 from job_board.paths import CONFIG_PATH
 from job_board.posting_repository import PostingRepository
 from job_board.posting_routes import PostingRoutes
+from job_board.profile_repository import ProfileRepository
+from job_board.profile_routes import ProfileRoutes
+from job_board.rescore_job import RescoreJob
+from job_board.rescore_routes import RescoreRoutes
 from job_board.run_routes import RunRoutes
 from job_board.scan import Scan
+from job_board.scorer import Scorer
 from job_board.settings_routes import SettingsRoutes
 
 logger = logging.getLogger(__name__)
@@ -43,6 +51,8 @@ class AppFactory:
         company_routes: CompanyRoutes | None = None,
         run_routes: RunRoutes | None = None,
         settings_routes: SettingsRoutes | None = None,
+        profile_routes: ProfileRoutes | None = None,
+        rescore_routes: RescoreRoutes | None = None,
         config_path: Path = CONFIG_PATH,
     ) -> None:
         self._config_loader = config_loader
@@ -52,6 +62,11 @@ class AppFactory:
         self._company_routes = company_routes or CompanyRoutes(CompanyRepository(self._database))
         self._run_routes = run_routes or RunRoutes(self._new_discover, self._new_scan)
         self._settings_routes = settings_routes or SettingsRoutes(config_loader, ConfigEditor(config_path))
+        self._profiles = ProfileRepository(self._database)
+        self._profile_routes = profile_routes or ProfileRoutes(self._profiles, self._database.path.parent / "profile")
+        postings = PostingRepository(self._database)
+        rescore_job = RescoreJob(postings, self._new_scorer, self._threshold, LocationSweep(postings, self._location_rule))
+        self._rescore_routes = rescore_routes or RescoreRoutes(rescore_job)
 
     def build(self) -> FastAPI:
         """Create the app. API routers are added before the frontend mount, which catches every other path."""
@@ -60,12 +75,26 @@ class AppFactory:
         app.include_router(self._company_routes.router())
         app.include_router(self._run_routes.router())
         app.include_router(self._settings_routes.router())
+        app.include_router(self._profile_routes.router())
+        app.include_router(self._rescore_routes.router())
         self._mount_frontend(app)
         return app
 
     def _new_discover(self) -> Discover:
         """A discover run over the current config.yaml on this app's database (it opens its own HTTP client)."""
         return Discover(self._config_loader(), database=self._database)
+
+    def _new_scorer(self) -> Scorer:
+        """A scorer on the provider currently in config.yaml, reading this app's profile."""
+        return Scorer.from_settings(self._config_loader().llm, self._profiles, os.environ)
+
+    def _threshold(self) -> int:
+        """llm.threshold as currently in config.yaml."""
+        return self._config_loader().llm.threshold
+
+    def _location_rule(self) -> LocationRule:
+        """The location rule of the profile as currently stored."""
+        return LocationRule.for_profile(self._profiles.get())
 
     def _new_scan(self) -> Scan:
         """A scan run over the current config.yaml on this app's database (it opens its own HTTP client)."""
