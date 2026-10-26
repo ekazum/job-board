@@ -19,6 +19,14 @@ dependencies = [
     "pypdf",
     "python-docx",
     "geonamescache",
+    # the chat window: a LangGraph agent whose tools are served over MCP
+    "mcp",
+    "langchain-core",
+    "langchain-ollama",
+    "langchain-openai",
+    "langchain-mcp-adapters",
+    "langgraph",
+    "langgraph-checkpoint-sqlite",
     # tests and type stubs, installed with the app so `pip install -e ./backend` is the whole setup
     "pytest",
     "httpx2",

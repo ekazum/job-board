@@ -9,7 +9,8 @@ from fastapi import APIRouter, HTTPException, status
 from job_board.config.app_config import AppConfig
 from job_board.config.config_editor import ConfigEditor
 from job_board.config.llm_settings import LlmSettings
-from job_board.llm.llm_client import NO_KEY, LlmClient
+from job_board.config.provider_credentials import NO_KEY
+from job_board.llm.llm_client import LlmClient
 from job_board.llm.llm_error import LlmError
 from job_board.models.llm_provider_choice import LlmProviderChoice
 from job_board.models.llm_settings_view import LlmSettingsView

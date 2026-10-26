@@ -38,6 +38,12 @@ class PostingRoutes:
         router.add_api_route("/rejects", self.purge_rejects, methods=["DELETE"])
         router.add_api_route(
             "/{posting_id}",
+            self.get_posting,
+            methods=["GET"],
+            responses={status.HTTP_404_NOT_FOUND: {"description": "No posting with this id"}},
+        )
+        router.add_api_route(
+            "/{posting_id}",
             self.patch_posting,
             methods=["PATCH"],
             responses={status.HTTP_404_NOT_FOUND: {"description": "No posting with this id"}},
@@ -95,6 +101,13 @@ class PostingRoutes:
         """Delete for good the postings the role filter or the location rule archived (a later scan finds them again if
         still listed and they pass)."""
         return PurgeResult(deleted=self._repository.delete_rejects())
+
+    def get_posting(self, posting_id: int) -> Posting:
+        """One posting (the chat window opens a #id it mentions)."""
+        posting = self._repository.get(posting_id)
+        if posting is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, f"posting {posting_id} not found")
+        return posting
 
     def patch_posting(self, posting_id: int, body: PostingPatch) -> Posting:
         """Change status, outcome and/or note. Leaving closed clears the outcome."""

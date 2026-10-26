@@ -119,7 +119,7 @@ Regenerate frontend types after changing API models (backend must be running):
 
 ## LLM provider
 
-`backend/job_board/llm/llm_client.py` is the only code that talks to an LLM (and the only importer of `openai`). Every
+`backend/job_board/llm/llm_client.py` is the scorer's way to an LLM (the chat window has its own, see Chat). Every
 provider is reached through its OpenAI-compatible API, chosen in `config.yaml`:
 
 ```yaml
@@ -211,12 +211,46 @@ answer is validated with Pydantic; a bad answer is retried once, then stored as 
   interview, closed) keeps its status and only gets the new score. **Re-score** in a posting's
   side panel does one.
 
+## Chat
+
+The **Chat** button (top right) opens a chat window that answers questions about your board from its own data:
+"Which new jobs fit me best?", "What gaps keep coming up?", "Compare #42 and #57". It can only read; changing cards
+from the chat is not built yet. A `#42` in an answer opens that posting. The conversation is kept on the server
+(`data/chat.db`), so it survives a reload; **New chat** starts over.
+
+How it works:
+
+- **Agent** (`chat/`): a LangGraph graph, `agent -> tools -> agent ...` until the model answers, over a LangChain chat
+  model. Every message is saved by LangGraph's SQLite checkpointer, one thread per conversation; earlier turns are
+  sent back cut to `chat.history_tokens`, questions and answers only. The answer streams to the window as
+  server-sent events (`token`, `tool`, `tool_result`, then `done` or `error`).
+- **Tools** (`tools/board_tools.py`): an MCP server at `/mcp/` with `search_postings`, `get_posting`, `get_profile`,
+  `board_summary` and `list_companies`, all read-only and answering in compact JSON. The agent loads them through
+  `langchain-mcp-adapters`; any other MCP client can use them too, e.g. Claude Code:
+  `claude mcp add --transport http job-board http://127.0.0.1:8000/mcp/` (only while the server runs). Only requests
+  addressed to this machine are answered.
+- **Model** (`chat/chat_model_factory.py`): the `chat:` section of `config.yaml`, separate from scoring:
+
+```yaml
+chat:
+  provider: ollama          # any entry under providers
+  model: qwen2.5:7b
+  num_ctx: 8192             # Ollama only: the context window in tokens
+  max_steps: 12             # model and tool steps per answer
+  history_tokens: 3000      # earlier conversation sent with each message
+```
+
+Ollama is called through its own API (`ChatOllama`) so `num_ctx` applies; every other provider through its
+OpenAI-compatible endpoint (`ChatOpenAI`) with its key from `.env`, so switching is the `provider` line. On a CPU
+`qwen2.5:7b` answers in about 1 minute (one tool call); while a Scan is scoring, Ollama finishes that first.
+
 ## API
 
 | Method | Path | Notes |
 |---|---|---|
-| GET | `/api/postings` | newest first; filters (in SQL): `q` (title substring), `in_text` (also the description), `company` and `source` (repeatable), `min_fit` (0-10; unscored postings always pass), `location` (substring, spellings normalized), `archived` (true: only the scorer's, the keywords' and the location rule's rejects; default false hides them) |
+| GET | `/api/postings` | newest first; filters (in SQL): `q` (title substring), `in_text` (also the description), `company` and `source` (repeatable), `min_fit` (0-10; unscored postings always pass), `location` (substring, spellings normalized), `archived` (true: only the keywords' and the location rule's rejects; default false hides them) |
 | GET | `/api/postings/facets` | companies and sources that have postings, unfiltered count per column |
+| GET | `/api/postings/{id}` | one posting; 404 if missing |
 | POST | `/api/postings` | paste: `company, title, url, text?` → 201 created, 200 if the same job (canonical URL) exists |
 | PATCH | `/api/postings/{id}` | `status?, outcome?, note?`; leaving closed clears outcome; outcome on an open posting → 422 |
 | DELETE | `/api/postings/rejects` | Purge rejects: deletes the postings the keywords or the location rule archived → `{deleted}` |
@@ -236,6 +270,10 @@ answer is validated with Pydantic; a bad answer is retried once, then stored as 
 | GET | `/api/rescore/status` | `{running, done, total, error}` |
 | POST | `/api/rescore/filters` | applies the profile's keywords and location to the stored postings, no scoring → `{archived, restored}`; 409 during Re-score all |
 | POST | `/api/rescore/{id}` | keywords and location rule, then re-score one posting → the posting; 404 if missing |
+| POST | `/api/chat` | `{message, thread_id?}` → the answer as server-sent events: `thread` (the id of a new conversation), `token`, `tool`, `tool_result`, then `done` or `error` |
+| GET | `/api/chat/{thread_id}` | `{thread_id, lines: [{role, text}]}` (role: user, assistant or tool); 404 if missing |
+| DELETE | `/api/chat/{thread_id}` | forget a conversation → 204 |
+| POST | `/mcp/` | the board's MCP server (streamable HTTP, read-only tools) |
 
 Interactive docs at `/docs` while the server runs.
 
@@ -258,13 +296,15 @@ backend/job_board/
     company_routes.py         /api/companies
     run_routes.py             /api/discover, /api/scan, /api/scan/status (one run at a time)
     settings_routes.py        /api/settings/llm (show, switch provider, test)
+    chat_routes.py            /api/chat (send, as server-sent events; history; forget)
     profile_routes.py         /api/profile (upload, show, edit)
     rescore_routes.py         /api/rescore (all in the background, progress, one)
   config/
     app_config.py             config.yaml loader
     company_seed.py           a company entry from config.yaml
     config_editor.py          rewrites llm.provider in config.yaml, keeping comments
-    llm_settings.py, llm_settings_parser.py, llm_provider.py   the llm and providers sections
+    llm_settings.py, chat_settings.py, llm_settings_parser.py, llm_provider.py   the llm, chat and providers sections
+    provider_credentials.py   a provider by name and its API key from .env
     paths.py                  repo-relative locations
   storage/
     database.py               SQLite connections, schema, migrations, WAL mode
@@ -280,6 +320,12 @@ backend/job_board/
     location_resolver.py      location text -> ISO country codes (board field, country name, geonamescache city)
     place_names.py            one spelling per place (Tel-Aviv, Petach Tikva, Ra'anana)
     profile_sweep.py          applies the keywords and the location rule to the stored postings
+  chat/
+    chat_agent.py             streams answers, keeps conversations (LangGraph SQLite checkpointer, data/chat.db)
+    chat_graph.py             the LangGraph graph: agent -> tools -> agent
+    chat_model_factory.py     the LangChain chat model for config.yaml's chat section (ChatOllama, ChatOpenAI)
+  tools/
+    board_tools.py            the board's read-only MCP tools, served at /mcp/
   runs/
     discover.py               Discover orchestrator + CLI
     scan.py                   Scan orchestrator + CLI
@@ -313,12 +359,15 @@ frontend/src/               Vite + TypeScript, no framework
     side-panel.ts             the panel shell
     posting-details.ts        location, country, link, fit, description, note, outcome
     paste-form.ts             add a posting found elsewhere
+  chat/
+    chat-window.ts            the chat window: streamed answers, tool chips, #id links, New chat
+    chat-stream.ts            server-sent events from a fetch body
   ui/
     outcome-dialog.ts         "How did it end?" when dropping into Closed
     confirm-dialog.ts         yes/no for actions that cannot be undone (Purge rejects)
     keyword-list.ts           editable chips for the job-title keywords
     notice.ts, dom.ts         toasts; the el() element builder
-data/                       SQLite file, uploaded CV, backups/ (all git-ignored)
+data/                       SQLite file, chat.db, uploaded CV, backups/ (all git-ignored)
 ```
 
 Conventions: one class per file, full type hints, zero PyCharm warnings.

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import yaml
 
+from job_board.config.chat_settings import ChatSettings
 from job_board.config.company_seed import CompanySeed
 from job_board.config.llm_settings import LlmSettings
 from job_board.config.llm_settings_parser import LlmSettingsParser
@@ -23,6 +24,7 @@ class AppConfig:
     db_path: Path
     companies: tuple[CompanySeed, ...]
     llm: LlmSettings = field(default_factory=LlmSettings)
+    chat: ChatSettings = field(default_factory=ChatSettings)
 
     @classmethod
     def from_yaml(cls, path: Path) -> AppConfig:
@@ -37,10 +39,12 @@ class AppConfig:
         db_path = Path(db_value)
         if not db_path.is_absolute():
             db_path = path.parent / db_path
+        llm = LlmSettingsParser.parse(data.get("llm"), data.get("providers"))
         return cls(
             db_path=db_path.resolve(),
             companies=cls._seeds(data.get("companies")),
-            llm=LlmSettingsParser.parse(data.get("llm"), data.get("providers")),
+            llm=llm,
+            chat=LlmSettingsParser.parse_chat(data.get("chat"), llm.providers),
         )
 
     @staticmethod

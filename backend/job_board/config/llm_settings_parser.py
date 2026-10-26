@@ -1,16 +1,19 @@
-"""Read the llm and providers sections of config.yaml."""
+"""Read the llm, chat and providers sections of config.yaml."""
 
+from job_board.config.chat_settings import ChatSettings
 from job_board.config.llm_provider import LlmProvider
 from job_board.config.llm_settings import DEFAULT_PROVIDERS, LlmSettings
 from job_board.utils.json_values import as_dict
 
 DEFAULTS = LlmSettings()
+CHAT_DEFAULTS = ChatSettings()
 
 
 class LlmSettingsParser:
     """Validates the llm section (provider, model, threshold, max_text_chars, request_timeout_s, max_retries) and the
     providers section ({name: {base_url, api_key_env, concurrency?, json_mode?, model?}}). Missing sections fall back
-    to the defaults in LlmSettings; llm.provider must name one of the providers."""
+    to the defaults in LlmSettings; llm.provider must name one of the providers. parse_chat does the same for the chat
+    section (ChatSettings)."""
 
     @staticmethod
     def parse(llm_section: object, providers_section: object) -> LlmSettings:
@@ -30,6 +33,21 @@ class LlmSettingsParser:
         )
         if settings.provider not in {provider.name for provider in providers}:
             raise ValueError(f"config 'llm.provider' is {settings.provider!r}, which is not listed under providers")
+        return settings
+
+    @staticmethod
+    def parse_chat(chat_section: object, providers: tuple[LlmProvider, ...]) -> ChatSettings:
+        """ChatSettings from the chat section (None when absent); chat.provider must name one of the providers."""
+        chat = LlmSettingsParser._section(chat_section, "chat")
+        settings = ChatSettings(
+            provider=LlmSettingsParser._text(chat.get("provider"), "chat.provider", CHAT_DEFAULTS.provider),
+            model=LlmSettingsParser._text(chat.get("model"), "chat.model", CHAT_DEFAULTS.model),
+            num_ctx=LlmSettingsParser._integer(chat.get("num_ctx"), "chat.num_ctx", CHAT_DEFAULTS.num_ctx),
+            max_steps=LlmSettingsParser._integer(chat.get("max_steps"), "chat.max_steps", CHAT_DEFAULTS.max_steps),
+            history_tokens=LlmSettingsParser._integer(chat.get("history_tokens"), "chat.history_tokens", CHAT_DEFAULTS.history_tokens),
+        )
+        if settings.provider not in {provider.name for provider in providers}:
+            raise ValueError(f"config 'chat.provider' is {settings.provider!r}, which is not listed under providers")
         return settings
 
     @staticmethod

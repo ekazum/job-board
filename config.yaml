@@ -12,6 +12,14 @@ llm:
   request_timeout_s: 120
   max_retries: 1            # one retry on 429/5xx (honouring Retry-After) or a dropped connection
 
+# The chat window's model (the Chat button). provider names one of the providers below; ollama runs it on this PC.
+chat:
+  provider: ollama
+  model: qwen2.5:7b
+  num_ctx: 8192             # Ollama only: the model's context window in tokens (prompt, tools and history must fit)
+  max_steps: 12             # model and tool steps per answer
+  history_tokens: 3000      # how much of the earlier conversation is sent with each message
+
 # OpenAI-compatible endpoints. API keys come from .env (api_key_env names the variable; NONE = no key, a dummy is
 # sent). concurrency: requests in flight (1 for a local CPU model). json_mode: send response_format=json_object.
 providers:

@@ -3,6 +3,9 @@ import type { components, operations } from "./types";
 type Schemas = components["schemas"];
 
 export type Posting = Schemas["Posting"];
+export type ChatHistory = Schemas["ChatHistory"];
+export type ChatLine = Schemas["ChatLine"];
+export type ChatRequest = Schemas["ChatRequest"];
 export type PostingCreate = Schemas["PostingCreate"];
 export type PostingPatch = Schemas["PostingPatch"];
 export type Status = Schemas["Status"];

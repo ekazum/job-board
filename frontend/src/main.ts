@@ -1,7 +1,8 @@
 import "./style.css";
 
-import { errorMessage, getLlmSettings, getPostingFacets, getPostings } from "./api/api";
+import { errorMessage, getLlmSettings, getPosting, getPostingFacets, getPostings } from "./api/api";
 import { isArchived, type Posting, type PostingQuery } from "./api/domain";
+import { ChatWindow } from "./chat/chat-window";
 import { PasteForm } from "./panels/paste-form";
 import { PostingDetails } from "./panels/posting-details";
 import { SidePanel } from "./panels/side-panel";
@@ -33,6 +34,7 @@ const companiesTab = el("a", { href: "#companies", class: "tab" }, "Companies");
 const profileTab = el("a", { href: "#profile", class: "tab" }, "Profile");
 const settingsTab = el("a", { href: "#settings", class: "tab" }, "Settings");
 const addButton = el("button", { type: "button", class: "button-primary topbar-action" }, "Add posting");
+const chatButton = el("button", { type: "button", class: "button-ghost", "aria-label": "Open the chat" }, "Chat");
 const boardRoot = el("main", { class: "board" });
 let filter: PostingQuery = {};
 
@@ -117,6 +119,7 @@ app.replaceChildren(
     el("h1", {}, "job-board"),
     el("nav", { class: "tabs", "aria-label": "Views" }, boardTab, archiveTab, companiesTab, profileTab, settingsTab),
     addButton,
+    chatButton,
   ),
   boardView,
   archiveView.element,
@@ -187,7 +190,15 @@ function showView(): void {
   }
 }
 
+const chatWindow = new ChatWindow({
+  onOpenPosting: (id) => {
+    getPosting(id).then(openDetails, (error: unknown) => notice.error(`Could not open #${id}: ${errorMessage(error)}`));
+  },
+});
+document.body.append(chatWindow.element);
+
 addButton.addEventListener("click", () => panel.show("paste", "Add posting", pasteForm.render()));
+chatButton.addEventListener("click", () => chatWindow.toggle());
 window.addEventListener("hashchange", showView);
 
 filter = initialFilter();

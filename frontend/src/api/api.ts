@@ -1,5 +1,8 @@
+import { type ChatStreamEvent, readEvents } from "../chat/chat-stream";
 import { toSearchParams } from "../views/filter-url";
 import type {
+  ChatHistory,
+  ChatRequest,
   Company,
   CompanyCreate,
   CompanyPatch,
@@ -139,6 +142,43 @@ export async function getRescoreStatus(): Promise<RescoreStatus> {
 /** Apply the location rule to one posting and score it unless that archived it. */
 export async function rescorePosting(id: number): Promise<Posting> {
   return (await request<Posting>("POST", `/api/rescore/${id}`)).data;
+}
+
+export async function getPosting(id: number): Promise<Posting> {
+  return (await request<Posting>("GET", `/api/postings/${id}`)).data;
+}
+
+/** Ask the chat agent; each event of the answer goes to onEvent as it arrives, until the stream ends or signal aborts. */
+export async function streamChat(
+  message: string,
+  threadId: string | null,
+  onEvent: (event: ChatStreamEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const body: ChatRequest = { message, thread_id: threadId };
+  const response = await fetch("/api/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!response.ok || response.body === null) {
+    throw new ApiError(response.status, await describeFailure(response));
+  }
+  for await (const event of readEvents(response.body)) {
+    onEvent(event);
+  }
+}
+
+export async function getChatHistory(threadId: string): Promise<ChatHistory> {
+  return (await request<ChatHistory>("GET", `/api/chat/${encodeURIComponent(threadId)}`)).data;
+}
+
+export async function deleteChat(threadId: string): Promise<void> {
+  const response = await fetch(`/api/chat/${encodeURIComponent(threadId)}`, { method: "DELETE" });
+  if (!response.ok) {
+    throw new ApiError(response.status, await describeFailure(response));
+  }
 }
 
 async function request<T>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {

@@ -76,7 +76,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Get Posting
+         * @description One posting (the chat window opens a #id it mentions).
+         */
+        get: operations["get_posting"];
         put?: never;
         post?: never;
         delete?: never;
@@ -363,6 +367,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chat
+         * @description Answer a message; a new conversation gets its id in the first (thread) event.
+         */
+        post: operations["chat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/chat/{thread_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Chat History
+         * @description A conversation so far.
+         */
+        get: operations["chat_history"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Chat
+         * @description Forget a conversation (New chat).
+         */
+        delete: operations["delete_chat"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -371,6 +419,39 @@ export interface components {
         Body_upload_profile: {
             /** File */
             file: string;
+        };
+        /**
+         * ChatHistory
+         * @description The conversation thread_id, oldest line first.
+         */
+        ChatHistory: {
+            /** Thread Id */
+            thread_id: string;
+            /** Lines */
+            lines: components["schemas"]["ChatLine"][];
+        };
+        /**
+         * ChatLine
+         * @description role is user (a question), assistant (an answer) or tool ("search_postings · 12 found").
+         */
+        ChatLine: {
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "user" | "assistant" | "tool";
+            /** Text */
+            text: string;
+        };
+        /**
+         * ChatRequest
+         * @description A message for the chat agent; thread_id continues a conversation (none starts a new one).
+         */
+        ChatRequest: {
+            /** Message */
+            message: string;
+            /** Thread Id */
+            thread_id?: string | null;
         };
         /**
          * Company
@@ -892,6 +973,44 @@ export interface operations {
             };
         };
     };
+    get_posting: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                posting_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Posting"];
+                };
+            };
+            /** @description No posting with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     patch_posting: {
         parameters: {
             query?: never;
@@ -1372,6 +1491,106 @@ export interface operations {
             };
             /** @description No posting with this id */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRequest"];
+            };
+        };
+        responses: {
+            /** @description The answer as server-sent events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    chat_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatHistory"];
+                };
+            };
+            /** @description No conversation with this id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_chat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };

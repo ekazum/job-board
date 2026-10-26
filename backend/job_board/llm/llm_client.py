@@ -1,4 +1,5 @@
-"""The single LLM entry point: an OpenAI-compatible chat endpoint chosen in config.yaml. Nothing else imports openai."""
+"""The scorer's LLM entry point: an OpenAI-compatible chat endpoint chosen in config.yaml. (The chat window talks to
+its model through LangChain instead, see chat/chat_model_factory.py.)"""
 
 from __future__ import annotations
 
@@ -12,11 +13,10 @@ from openai.types.chat import ChatCompletionSystemMessageParam, ChatCompletionUs
 from openai.types.shared_params import ResponseFormatJSONObject
 
 from job_board.config.llm_settings import LlmSettings
+from job_board.config.provider_credentials import ProviderCredentials
 from job_board.llm.llm_error import LlmError
 from job_board.utils.prompt_files import prompt
 
-NO_KEY = "NONE"
-DUMMY_KEY = "ollama"  # OpenAI-compatible servers that need no key (Ollama) still expect the header
 JSON_OBJECT: ResponseFormatJSONObject = {"type": "json_object"}
 
 
@@ -57,19 +57,11 @@ class LlmClient:
         cls, settings: LlmSettings, environ: Mapping[str, str], http_client: httpx2.AsyncClient | None = None
     ) -> LlmClient:
         """The client for settings.provider; ValueError when it is not configured or its API key is not set."""
-        provider = next((entry for entry in settings.providers if entry.name == settings.provider), None)
-        if provider is None:
-            raise ValueError(f"provider {settings.provider!r} is not listed under providers in config.yaml")
-        if provider.api_key_env.upper() == NO_KEY:
-            api_key = DUMMY_KEY
-        else:
-            api_key = environ.get(provider.api_key_env, "").strip()
-            if not api_key:
-                raise ValueError(f"{provider.api_key_env} is not set; add it to .env for provider {provider.name!r}")
+        provider = ProviderCredentials.find(settings.providers, settings.provider)
         return cls(
             provider=provider.name,
             base_url=provider.base_url,
-            api_key=api_key,
+            api_key=ProviderCredentials.api_key(provider, environ),
             model=provider.model or settings.model,
             timeout_seconds=settings.request_timeout_s,
             max_retries=settings.max_retries,
