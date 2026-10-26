@@ -13,7 +13,16 @@ NOT_PLACES = frozenset(
 )
 # Other spellings of a place, as they read after the earlier steps of normalize().
 ALIASES: dict[str, tuple[str, ...]] = {
-    "tel aviv": ("tel aviv yafo", "tel aviv jaffa", "tel aviv yaffo", "telaviv", "tlv", "תל אביב יפו", "תל אביב"),
+    "tel aviv": (
+        "tel aviv yafo",
+        "tel aviv jaffa",
+        "tel aviv yaffo",
+        "telaviv",
+        "tlv",
+        "תל אביב יפו",
+        "תל אביב",
+        "ת א",  # ת"א
+    ),
     "petah tikva": (
         "petach tikva",
         "petach tikvah",
@@ -38,6 +47,7 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "hod hasharon": ("hod ha sharon",),
     "bnei brak": ("bene beraq", "bnei braq"),
     "yokneam": ("yoqneam illit", "yokneam illit", "yoqneam"),
+    "lod": ("ben gurion airport", "נמל התעופה בן גוריון", "נתב ג", "לוד"),  # the airport, Natbag (נתב"ג), is at Lod
     "remote": ("work from home", "wfh"),
 }
 ALIAS_PATTERNS = tuple(

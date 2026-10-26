@@ -5,6 +5,7 @@ from collections.abc import Callable, Sequence
 from urllib.parse import urlsplit
 
 from job_board.boards.board_ref import BoardRef
+from job_board.boards.tyco_source import JOBS_FILE as TYCO_JOBS_FILE
 from job_board.enums.platform import Platform
 
 COMEET_UID = r"[0-9A-Za-z]{2}\.[0-9A-Za-z]{3}"
@@ -81,14 +82,17 @@ WIDGET_NAME = _pattern(r"(?:data-company-name|[\"']company-name[\"'])\s*[=:]\s*[
 # (quotes HTML-escaped); the API is on the page's own host.
 QUOTE = r"(?:&#34;|&quot;|\")"
 EIGHTFOLD_DATA = _pattern(rf"id=[\"']pcsx-data[\"'][^>]*>\s*\{{\s*{QUOTE}domain{QUOTE}\s*:\s*{QUOTE}([\w.-]+){QUOTE}")
+# A careers site on the tyco-wp WordPress theme names its jobs file in a script: _jobsFile = "/wp-content/themes/
+# tyco-wp/assets/json/jobs.json?v=..." (JSON-escaped slashes), on the page's own host unless the URL names one.
+TYCO_DATA = _pattern(rf"_jobsFile\s*=\s*[\"'](?:https?://([\w.-]+))?{re.escape(TYCO_JOBS_FILE)}")
 
 
 class BoardLinkFinder:
     """Returns the board referenced earliest in a page, or None.
 
     Pass the page's final URL along with its HTML (the URL first, on its own line): a /careers path that redirects
-    to jobs.lever.co/acme is found from the URL alone, and an Eightfold site from its host. JSON-escaped slashes
-    (https:\\/\\/jobs.lever.co\\/acme, common in framework data blobs) are unescaped first.
+    to jobs.lever.co/acme is found from the URL alone, and an Eightfold or tyco-wp site from its host. JSON-escaped
+    slashes (https:\\/\\/jobs.lever.co\\/acme, common in framework data blobs) are unescaped first.
     """
 
     def __init__(self, rules: Sequence[tuple[re.Pattern[str], BoardBuilder]] = DEFAULT_RULES) -> None:
@@ -98,7 +102,7 @@ class BoardLinkFinder:
         """The first board reference by position in the page."""
         unescaped = page.replace("\\/", "/")
         candidates = [(match.start(), board) for match, board in self._links(unescaped)]
-        for special in (self._comeet_widget(unescaped), self._eightfold(unescaped)):
+        for special in (self._comeet_widget(unescaped), self._eightfold(unescaped), self._tyco(unescaped)):
             if special is not None:
                 candidates.append(special)
         if not candidates:
@@ -150,3 +154,12 @@ class BoardLinkFinder:
         if data is None or not host:
             return None
         return data.start(), BoardRef(Platform.EIGHTFOLD, host.lower(), tenant=data.group(1).lower())
+
+    @staticmethod
+    def _tyco(page: str) -> tuple[int, BoardRef] | None:
+        """A tyco-wp site: the host of its jobs file, which is the page's own (from the URL on its first line)."""
+        data = TYCO_DATA.search(page)
+        if data is None:
+            return None
+        host = data.group(1) or urlsplit(page.split("\n", 1)[0].strip()).hostname
+        return None if not host else (data.start(), BoardRef(Platform.TYCO, host.lower()))

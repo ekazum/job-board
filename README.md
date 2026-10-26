@@ -90,7 +90,11 @@ python -m job_board.runs.scan       # or POST /api/scan (in the background; GET 
   answering 401 has no public site and is skipped. A careers page served by **Eightfold** (the system behind
   Microsoft's site; `<code id="pcsx-data">` names its API domain) is read through its own host, e.g.
   `jobs.amdocs.com` with domain `amdocs.com`. A link to a **HiBob** careers site (`<company>.careers.hibob.com`) is
-  read through its `api/job-ad` (every job at once). Nothing found → `platform = none`; a board the page loads from a
+  read through its `api/job-ad` (every job at once). A careers site built on the **tyco-wp** WordPress theme
+  (`https://jobs.iai.co.il/jobs/`) names its jobs file in the page (`_jobsFile`), and every job is read from that one
+  file (`/wp-content/themes/tyco-wp/assets/json/jobs.json`); its titles and descriptions are in Hebrew, so only
+  Hebrew [job titles](#job-titles) match most of them (`חוקר`, `אלגוריתמים`). Nothing found → `platform = none`; a
+  board the page loads from a
   script is missed, so put the board's own URL in `careers_url` (e.g. `https://job-boards.greenhouse.io/playtikaltd`).
   A `careers_url` that is a board's link names that board even when its page does not load (the API check decides).
   A company with only a careers URL (no domain) is discovered from that page alone.
@@ -177,7 +181,8 @@ The profile starts with no location, so a scan stores nothing until you set one.
   one (Comeet `location.country`, Workday `jobRequisitionLocation.country.alpha2Code`); else each place in the text
   (`Berlin / Tel Aviv`, `A | B`, `A; B`) by its last or first comma part as a country name (`Tel Aviv, Israel`,
   `Israel, Raanana`, `Remote - US`); else the city, looked up in [geonamescache](https://pypi.org/project/geonamescache/)
-  (cities of 15,000+) after normalizing spellings (`Tel Aviv-Yafo`, `Petach Tikva`, `Ra'anana`). A city name used in
+  (cities of 15,000+) after normalizing spellings (`Tel Aviv-Yafo`, `Petach Tikva`, `Ra'anana`, `ת"א`, and `נתב"ג`,
+  Ben Gurion Airport, as Lod); Hebrew city names are among geonamescache's other names. A city name used in
   several countries (`London`) takes the one the place's other parts point to (`San Francisco, CA` → US), else
   none. The codes are stored in `postings.country` (`IL`, or `DE,IL` for several) and shown on cards.
 - `location_rule.py`: a posting passes when its country is the profile location's country. With the toggle, a fully
@@ -340,7 +345,7 @@ backend/job_board/
     keyword_filter.py         wanted / excluded roles on the job title, or "keywords: ..." for the Archive
     location_rule.py          profile location / fully remote -> keep, or "location: ..." for the Archive
     location_resolver.py      location text -> ISO country codes (board field, country name, geonamescache city)
-    place_names.py            one spelling per place (Tel-Aviv, Petach Tikva, Ra'anana)
+    place_names.py            one spelling per place (Tel-Aviv, Petach Tikva, Ra'anana, ת"א)
     profile_sweep.py          applies the keywords and the location rule to the stored postings
   chat/
     chat_agent.py             streams answers, keeps conversations (LangGraph SQLite checkpointer, data/chat.db)
@@ -358,8 +363,8 @@ backend/job_board/
     rescore_job.py            background Re-score all with progress
   boards/                   BoardLinkFinder, CareersSiteFinder, WorkdayTenantProbe, PostingCompanyFinder (a pasted
                             posting's company from its link), one BoardSource per platform
-                            (Greenhouse, Lever, Ashby, Comeet, Workday, Eightfold, HiBob, Google, Microsoft, Apple,
-                            Amazon, Meta)
+                            (Greenhouse, Lever, Ashby, Comeet, Workday, Eightfold, HiBob, tyco-wp, Google,
+                            Microsoft, Apple, Amazon, Meta)
   utils/                    HTTP client, CV text from .pdf/.docx/.md/.txt, job URL normalizing, JSON narrowing,
                             HTML -> text, domain normalization, sql/ and prompts/ file loading
   enums/                    Status, Outcome, Platform, Source

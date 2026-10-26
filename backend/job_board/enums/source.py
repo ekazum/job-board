@@ -13,6 +13,7 @@ class Source(StrEnum):
     WORKDAY = "workday"
     EIGHTFOLD = "eightfold"
     HIBOB = "hibob"
+    TYCO = "tyco"
     GOOGLE = "google"
     MICROSOFT = "microsoft"
     APPLE = "apple"

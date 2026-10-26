@@ -14,6 +14,7 @@ from job_board.boards.hibob_source import HibobSource
 from job_board.boards.lever_source import LeverSource
 from job_board.boards.meta_source import MetaSource
 from job_board.boards.microsoft_source import MicrosoftSource
+from job_board.boards.tyco_source import TycoSource
 from job_board.boards.workday_source import WorkdaySource
 from job_board.enums.platform import Platform
 from job_board.rules.keyword_filter import KeywordFilter
@@ -34,6 +35,7 @@ def default_sources(
         AshbySource(http),
         ComeetSource(http),
         HibobSource(http),
+        TycoSource(http),
         WorkdaySource(http, role_filter, locations),
         EightfoldSource(http, role_filter, locations),
         GoogleSource(http, role_filter, locations),

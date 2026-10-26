@@ -10,6 +10,7 @@ const SOURCE_NAMES: Record<Source, true> = {
   workday: true,
   eightfold: true,
   hibob: true,
+  tyco: true,
   google: true,
   microsoft: true,
   apple: true,

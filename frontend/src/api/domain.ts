@@ -52,6 +52,7 @@ export const PLATFORM_LABELS: Record<Platform, string> = {
   workday: "Workday",
   eightfold: "Eightfold",
   hibob: "HiBob",
+  tyco: "Tyco (WordPress)",
   google: "Google careers",
   microsoft: "Microsoft careers",
   apple: "Apple careers",

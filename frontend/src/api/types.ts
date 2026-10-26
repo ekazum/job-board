@@ -621,12 +621,13 @@ export interface components {
          * @description Applicant-tracking system behind a company's careers page.
          *
          *     GOOGLE, MICROSOFT, APPLE, AMAZON and META are single-company careers sites with their own JSON search APIs;
-         *     EIGHTFOLD is any other careers site run on Eightfold (the system behind Microsoft's); HIBOB a careers site on HiBob.
+         *     EIGHTFOLD is any other careers site run on Eightfold (the system behind Microsoft's); HIBOB a careers site on HiBob;
+         *     TYCO a careers site built on the tyco-wp WordPress theme (jobs.iai.co.il), which publishes every job in one file.
          *     NONE means discovery ran and found no supported platform (a proprietary portal);
          *     a NULL platform in the database means discovery has not run yet.
          * @enum {string}
          */
-        Platform: "greenhouse" | "lever" | "ashby" | "comeet" | "workday" | "eightfold" | "hibob" | "google" | "microsoft" | "apple" | "amazon" | "meta" | "none";
+        Platform: "greenhouse" | "lever" | "ashby" | "comeet" | "workday" | "eightfold" | "hibob" | "tyco" | "google" | "microsoft" | "apple" | "amazon" | "meta" | "none";
         /**
          * Posting
          * @description A job posting as stored in the postings table and returned by the API.
@@ -844,7 +845,7 @@ export interface components {
          * @description Where a posting came from: a scanned platform, or pasted by hand.
          * @enum {string}
          */
-        Source: "greenhouse" | "lever" | "ashby" | "comeet" | "workday" | "eightfold" | "hibob" | "google" | "microsoft" | "apple" | "amazon" | "meta" | "manual";
+        Source: "greenhouse" | "lever" | "ashby" | "comeet" | "workday" | "eightfold" | "hibob" | "tyco" | "google" | "microsoft" | "apple" | "amazon" | "meta" | "manual";
         /**
          * Status
          * @description Board column a posting sits in.

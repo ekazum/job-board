@@ -1,4 +1,4 @@
--- job-board schema, version 8. Runs only on a new database; existing ones are brought up to date by
+-- job-board schema, version 9. Runs only on a new database; existing ones are brought up to date by
 -- sql/migrations/<version>_*.sql. The CHECK value lists must match job_board/enums
 -- (tests/test_database.py tries every enum value against them).
 
@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS companies
     domain       TEXT,
     careers_url  TEXT,
     platform     TEXT CHECK (platform IN ('greenhouse', 'lever', 'ashby', 'comeet', 'workday', 'eightfold', 'hibob',
-                                      'google', 'microsoft', 'apple', 'amazon', 'meta', 'none')),
+                                      'tyco', 'google', 'microsoft', 'apple', 'amazon', 'meta', 'none')),
     slug         TEXT,
     company_uid  TEXT,
     token        TEXT,
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS postings
 (
     id          INTEGER PRIMARY KEY,
     source      TEXT NOT NULL CHECK (source IN ('greenhouse', 'lever', 'ashby', 'comeet', 'workday', 'eightfold', 'hibob',
-                                         'google', 'microsoft', 'apple', 'amazon', 'meta', 'manual')),
+                                         'tyco', 'google', 'microsoft', 'apple', 'amazon', 'meta', 'manual')),
     external_id TEXT NOT NULL,
     company     TEXT NOT NULL,
     title       TEXT NOT NULL,

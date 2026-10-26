@@ -13,7 +13,7 @@ from job_board.utils.sql_files import sql
 logger = logging.getLogger(__name__)
 
 BUSY_TIMEOUT_SECONDS = 5.0
-LATEST_VERSION = 8
+LATEST_VERSION = 9
 # Files created before versioning carry user_version 0 but already hold the version-1 tables.
 UNSTAMPED_EXISTING_VERSION = 1
 MIGRATIONS: dict[int, str] = {
@@ -24,6 +24,7 @@ MIGRATIONS: dict[int, str] = {
     6: "migrations/006_add_profile_locations.sql",
     7: "migrations/007_add_profile_keywords.sql",
     8: "migrations/008_add_eightfold_and_hibob.sql",
+    9: "migrations/009_add_tyco.sql",
 }
 
 
