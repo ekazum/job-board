@@ -217,8 +217,8 @@ async def test_comeet_api_board(database: Database) -> None:
 def _scorer_by_title(fits: dict[str, FitResult]) -> MagicMock:
     scorer = MagicMock(spec=Scorer)
 
-    async def score(*, title: str, company: str, location: str, text: str) -> FitResult:
-        del company, location, text
+    async def score(*, title: str, company: str, text: str) -> FitResult:
+        del company, text
         return fits[title]
 
     scorer.score.side_effect = score
@@ -253,8 +253,8 @@ async def test_each_new_job_is_stored_as_soon_as_it_is_scored(database: Database
     release = asyncio.Event()
     scorer = MagicMock(spec=Scorer)
 
-    async def score(*, title: str, company: str, location: str, text: str) -> FitResult:
-        del company, location, text
+    async def score(*, title: str, company: str, text: str) -> FitResult:
+        del company, text
         if title == "Security Researcher":
             await release.wait()
             return FitResult(3, "different field")

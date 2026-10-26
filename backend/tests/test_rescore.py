@@ -31,8 +31,8 @@ def _fake_scorer(fits: dict[str, FitResult]) -> MagicMock:
     """Scores by title; MagicMock(spec=Scorer) makes score/aclose AsyncMocks."""
     scorer = MagicMock(spec=Scorer)
 
-    async def score(*, title: str, company: str, location: str, text: str) -> FitResult:
-        del company, location, text
+    async def score(*, title: str, company: str, text: str) -> FitResult:
+        del company, text
         return fits[title]
 
     scorer.score.side_effect = score
@@ -101,8 +101,8 @@ async def test_only_one_rescore_at_a_time(database: Database) -> None:
     release = asyncio.Event()
     scorer = MagicMock(spec=Scorer)
 
-    async def slow(*, title: str, company: str, location: str, text: str) -> FitResult:
-        del title, company, location, text
+    async def slow(*, title: str, company: str, text: str) -> FitResult:
+        del title, company, text
         await release.wait()
         return FitResult(7, "ok")
 

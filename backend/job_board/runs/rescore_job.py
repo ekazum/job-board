@@ -60,8 +60,9 @@ class RescoreJob:
         logger.info("keywords and location: %d postings to the Archive, %d back to New", swept.archived, swept.restored)
         targets = self._postings.rescore_targets()
         self._done, self._total, self._error = 0, len(targets), None
-        self._task = asyncio.create_task(self._rescore_all(targets))
-        self._task.add_done_callback(self._finished)
+        task = asyncio.create_task(self._rescore_all(targets))
+        task.add_done_callback(self._finished)
+        self._task = task
         return True
 
     async def rescore_one(self, posting_id: int) -> Posting | None:
@@ -95,7 +96,7 @@ class RescoreJob:
 
     async def _rescore(self, scorer: Scorer, posting: Posting) -> Posting | None:
         """Score and store one posting, leaving its status and outcome as they are."""
-        fit = await scorer.score(title=posting.title, company=posting.company, location=posting.location, text=posting.text)
+        fit = await scorer.score(title=posting.title, company=posting.company, text=posting.text)
         return self._postings.save_fit(posting.id, fit, posting.status, posting.outcome)
 
     def _finished(self, task: asyncio.Task[None]) -> None:

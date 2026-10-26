@@ -19,6 +19,7 @@ from job_board.api.profile_routes import ProfileRoutes
 from job_board.api.rescore_routes import RescoreRoutes
 from job_board.api.run_routes import RunRoutes
 from job_board.api.settings_routes import SettingsRoutes
+from job_board.chat.change_preview import ChangePreview
 from job_board.chat.chat_agent import ChatAgent
 from job_board.chat.chat_model_factory import ChatModelFactory
 from job_board.config.app_config import AppConfig
@@ -34,6 +35,7 @@ from job_board.storage.company_repository import CompanyRepository
 from job_board.storage.database import Database
 from job_board.storage.posting_repository import PostingRepository
 from job_board.storage.profile_repository import ProfileRepository
+from job_board.tools.board_actions import BoardActions
 from job_board.tools.board_tools import MOUNT_PATH, BoardTools
 
 logger = logging.getLogger(__name__)
@@ -77,9 +79,14 @@ class AppFactory:
         rescore_job = RescoreJob(postings, self._new_scorer, ProfileSweep(postings, self._profiles.get))
         self._rescore_routes = rescore_routes or RescoreRoutes(rescore_job)
         self._chat_agent = chat_agent or ChatAgent(
-            self._database.path.parent / CHAT_DB, ChatModelFactory(config_loader, os.environ), self._chat_settings, self._profiles.get
+            self._database.path.parent / CHAT_DB,
+            ChatModelFactory(config_loader, os.environ),
+            self._chat_settings,
+            self._profiles.get,
+            ChangePreview(postings.get).describe,
         )
-        tools = board_tools or BoardTools(postings, CompanyRepository(self._database), self._profiles)
+        actions = BoardActions(postings, self._run_routes.start_scan)
+        tools = board_tools or BoardTools(postings, CompanyRepository(self._database), self._profiles, actions)
         self._mcp_server = tools.server()
 
     def build(self) -> FastAPI:

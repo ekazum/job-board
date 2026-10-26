@@ -387,6 +387,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/chat/{thread_id}/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume Chat
+         * @description Answer the confirm the conversation waits on: approve makes the changes, false cancels them.
+         */
+        post: operations["resume_chat"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/chat/{thread_id}": {
         parameters: {
             query?: never;
@@ -422,13 +442,15 @@ export interface components {
         };
         /**
          * ChatHistory
-         * @description The conversation thread_id, oldest line first.
+         * @description The conversation thread_id, oldest line first; pending: the changes waiting for the user's confirm, in words.
          */
         ChatHistory: {
             /** Thread Id */
             thread_id: string;
             /** Lines */
             lines: components["schemas"]["ChatLine"][];
+            /** Pending */
+            pending: string[];
         };
         /**
          * ChatLine
@@ -452,6 +474,14 @@ export interface components {
             message: string;
             /** Thread Id */
             thread_id?: string | null;
+        };
+        /**
+         * ChatResume
+         * @description The user's answer to the changes the agent asked to make: approve makes them, false cancels them.
+         */
+        ChatResume: {
+            /** Approve */
+            approve: boolean;
         };
         /**
          * Company
@@ -1528,6 +1558,48 @@ export interface operations {
                 content: {
                     "text/event-stream": unknown;
                 };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resume_chat: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                thread_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatResume"];
+            };
+        };
+        responses: {
+            /** @description The answer as server-sent events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Nothing in this conversation waits for a confirm */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {

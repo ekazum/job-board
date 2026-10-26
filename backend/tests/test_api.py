@@ -322,6 +322,7 @@ def test_openapi_uses_method_names_as_operation_ids(client: TestClient) -> None:
         "get_posting",
         "patch_posting",
         "chat",
+        "resume_chat",
         "chat_history",
         "delete_chat",
         "purge_rejects",

@@ -1,4 +1,4 @@
-import { deleteChat, errorMessage, getChatHistory, streamChat } from "../api/api";
+import { deleteChat, errorMessage, getChatHistory, resumeChat, streamChat } from "../api/api";
 import type { ChatLine } from "../api/domain";
 import { el } from "../ui/dom";
 import type { ChatStreamEvent } from "./chat-stream";
@@ -6,6 +6,8 @@ import type { ChatStreamEvent } from "./chat-stream";
 export interface ChatWindowCallbacks {
   /** The user clicked a #id the agent wrote. */
   onOpenPosting(id: number): void;
+  /** A change the user confirmed was made (a card moved or closed, a note added, a scan started). */
+  onBoardChanged(): void;
 }
 
 const THREAD_KEY = "job-board:chat-thread";
@@ -14,11 +16,15 @@ const MARKUP = /\*\*(.+?)\*\*|#(\d+)/g;
 const TICK_MS = 1000;
 
 type LineRole = ChatLine["role"] | "error";
+/** Sends the request whose answer streams in, handing each event to onEvent. */
+type AnswerRequest = (onEvent: (event: ChatStreamEvent) => void, signal: AbortSignal) => Promise<void>;
 
 /**
  * The chat window: questions about the board answered by the agent from the board's own data. The answer streams in
- * as the model writes it, with a chip for each tool it uses; #42 in an answer opens that posting. The conversation is
- * kept on the server (its id in this browser), so it is still here after a reload; New chat starts over.
+ * as the model writes it, with a chip for each tool it uses; #42 in an answer opens that posting. When the agent asks
+ * to change the board, a card lists the changes with Confirm and Cancel, and nothing changes until Confirm; sending a
+ * message instead cancels them. The conversation is kept on the server (its id in this browser), so it is still here
+ * after a reload, a waiting card included; New chat starts over.
  */
 export class ChatWindow {
   readonly element: HTMLElement;
@@ -32,6 +38,7 @@ export class ChatWindow {
   private loaded = false;
   private running: AbortController | null = null;
   private ticker: number | undefined;
+  private confirmButtons: HTMLElement | null = null;
 
   constructor(callbacks: ChatWindowCallbacks) {
     this.callbacks = callbacks;
@@ -87,7 +94,7 @@ export class ChatWindow {
     this.element.hidden = true;
   }
 
-  /** The saved conversation, or a hint when there is none. */
+  /** The saved conversation (with the changes still waiting for a confirm), or a hint when there is none. */
   private async loadHistory(): Promise<void> {
     if (this.threadId === null) {
       this.showHint();
@@ -97,6 +104,9 @@ export class ChatWindow {
       const history = await getChatHistory(this.threadId);
       for (const line of history.lines) {
         this.addLine(line.role, line.text);
+      }
+      if (history.pending.length > 0) {
+        this.showConfirm(history.pending);
       }
     } catch {
       this.forgetThread(); // gone on the server (or unreadable): start fresh
@@ -111,7 +121,23 @@ export class ChatWindow {
     }
     this.input.value = "";
     this.log.querySelector(".chat-hint")?.remove();
+    this.settleConfirm("Cancelled: you sent a message instead"); // the server cancels the changes too
     this.addLine("user", text);
+    await this.answer((onEvent, signal) => streamChat(text, this.threadId, onEvent, signal));
+  }
+
+  /** Confirm or cancel the changes on the card; the agent goes on from there. */
+  private async resume(approve: boolean): Promise<void> {
+    const threadId = this.threadId;
+    if (threadId === null || this.running !== null) {
+      return;
+    }
+    this.settleConfirm(approve ? "Confirmed" : "Cancelled");
+    await this.answer((onEvent, signal) => resumeChat(threadId, approve, onEvent, signal));
+  }
+
+  /** Show an answer as it streams in: its text, a chip per tool, a card when it waits for a confirm. */
+  private async answer(request: AnswerRequest): Promise<void> {
     const answer = this.addLine("assistant", "");
     const controller = new AbortController();
     this.setRunning(controller);
@@ -125,20 +151,23 @@ export class ChatWindow {
         this.renderText(answer, written);
       } else if (event.event === "tool") {
         this.status.dataset.step = `using ${String(data.name)}`;
-        this.log.insertBefore(this.chip(`${String(data.name)}…`), answer);
+        const chip = this.chip(`${String(data.name)}…`);
+        chip.dataset.pending = String(data.name);
+        this.log.insertBefore(chip, answer);
       } else if (event.event === "tool_result") {
-        const chips = this.log.querySelectorAll<HTMLElement>(".chat-tool");
-        const last = chips[chips.length - 1];
-        if (last !== undefined) {
-          last.textContent = `${String(data.name)} · ${String(data.summary)}`;
-        }
+        this.showResult(String(data.name), String(data.summary));
         this.status.dataset.step = "writing the answer";
+        if (data.changed === true) {
+          this.callbacks.onBoardChanged();
+        }
+      } else if (event.event === "confirm" && Array.isArray(data.changes)) {
+        this.showConfirm(data.changes.filter((change): change is string => typeof change === "string"));
       } else if (event.event === "error" && typeof data.message === "string") {
         this.addLine("error", data.message === "stopped" ? "Stopped." : `The answer stopped: ${data.message}`);
       }
     };
     try {
-      await streamChat(text, this.threadId, onEvent, controller.signal);
+      await request(onEvent, controller.signal);
     } catch (error) {
       this.addLine("error", controller.signal.aborted ? "Stopped." : `Could not get an answer: ${errorMessage(error)}`);
     } finally {
@@ -149,10 +178,55 @@ export class ChatWindow {
     }
   }
 
+  /** The first chip still waiting for this tool's result shows it. */
+  private showResult(name: string, summary: string): void {
+    const chips = this.log.querySelectorAll<HTMLElement>(".chat-tool[data-pending]");
+    const chip = [...chips].find((candidate) => candidate.dataset.pending === name);
+    if (chip !== undefined) {
+      chip.textContent = `${name} · ${summary}`;
+      delete chip.dataset.pending;
+    }
+  }
+
+  /** The card listing the changes the agent asks to make, with Confirm and Cancel. */
+  private showConfirm(changes: string[]): void {
+    this.settleConfirm("Cancelled");
+    const list = el("ul", { class: "chat-confirm-list" });
+    for (const change of changes) {
+      const item = el("li", {});
+      this.renderText(item, change);
+      list.append(item);
+    }
+    const confirmButton = el("button", { type: "button", class: "button-primary" }, "Confirm");
+    const cancelButton = el("button", { type: "button", class: "button-ghost" }, "Cancel");
+    confirmButton.addEventListener("click", () => void this.resume(true));
+    cancelButton.addEventListener("click", () => void this.resume(false));
+    this.confirmButtons = el("div", { class: "chat-confirm-buttons" }, confirmButton, cancelButton);
+    const heading = changes.length === 1 ? "Make this change?" : "Make these changes?";
+    this.log.append(
+      el(
+        "div",
+        { class: "chat-confirm", role: "group", "aria-label": heading },
+        el("p", { class: "chat-confirm-heading" }, heading),
+        list,
+        this.confirmButtons,
+      ),
+    );
+    this.scrollToEnd();
+    confirmButton.focus();
+  }
+
+  /** The waiting card, if any, answered: its buttons give way to what happened. */
+  private settleConfirm(outcome: string): void {
+    this.confirmButtons?.replaceWith(el("p", { class: "chat-confirm-outcome muted" }, outcome));
+    this.confirmButtons = null;
+  }
+
   private async startOver(): Promise<void> {
     this.running?.abort();
     const old = this.threadId;
     this.forgetThread();
+    this.confirmButtons = null;
     this.log.replaceChildren();
     this.showHint();
     this.input.focus();
@@ -226,7 +300,7 @@ export class ChatWindow {
       el(
         "p",
         { class: "chat-hint muted" },
-        "Ask about your board, e.g. “Which new jobs fit me best?” or “What gaps keep coming up?”. On the local model an answer can take a minute or two.",
+        "Ask about your board, e.g. “Which new jobs fit me best?”, or for a change, e.g. “Move #42 to Applied” (you confirm it first). On the local model an answer can take a minute or two.",
       ),
     );
   }

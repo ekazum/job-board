@@ -24,7 +24,8 @@ PARSE_ERROR = "parse error"
 
 class Scorer:
     """Asks the LLM how well one posting fits the profile (prompts/score_system.txt holds the rubric and the JSON
-    schema; prompts/score_user.txt the CV, targets and posting, the description cut to max_text_chars).
+    schema; prompts/score_user.txt the CV, targets, wanted and excluded job titles and posting, the description cut
+    to max_text_chars). Location is not the scorer's to judge: the location rule decides it before a posting is scored.
 
     The answer is validated with FitAssessment; an invalid one is asked again once, then the fit is None with reason
     "parse error". Without a profile the LLM is not called (reason "no profile"); an LLM failure gives reason
@@ -54,7 +55,7 @@ class Scorer:
             return cls(None, profiles, settings.max_text_chars, setup_error=str(error))
         return cls(llm, profiles, settings.max_text_chars)
 
-    async def score(self, *, title: str, company: str, location: str, text: str) -> FitResult:
+    async def score(self, *, title: str, company: str, text: str) -> FitResult:
         """How well this posting fits the stored profile."""
         profile = self._profiles.get()
         if profile is None or not profile.cv_text.strip():
@@ -64,9 +65,9 @@ class Scorer:
         prompt_text = prompt("score_user.txt").format(
             cv_text=profile.cv_text.strip(),
             targets=profile.targets.strip() or "(none given)",
+            job_titles=profile.job_titles(),
             title=title,
             company=company,
-            location=location or "(not given)",
             text=text[: self._max_text_chars],
         )
         for attempt in range(1, ATTEMPTS + 1):

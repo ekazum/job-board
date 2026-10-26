@@ -1,7 +1,7 @@
-"""The board's read-only tools, served over MCP at /mcp: the chat window's agent uses them, and so can any MCP client
-(Claude Code: `claude mcp add --transport http job-board http://127.0.0.1:8000/mcp/`)."""
+"""The board's tools, served over MCP at /mcp: the read-only ones here and the ones that change the board
+(board_actions.py). The chat window's agent uses them, and so can any MCP client (Claude Code:
+`claude mcp add --transport http job-board http://127.0.0.1:8000/mcp/`)."""
 
-import json
 from typing import Annotated
 
 from mcp.server.fastmcp import FastMCP
@@ -16,9 +16,12 @@ from job_board.storage.company_repository import CompanyRepository
 from job_board.storage.posting_filter import PostingFilter
 from job_board.storage.posting_repository import PostingRepository
 from job_board.storage.profile_repository import ProfileRepository
+from job_board.tools.board_actions import BoardActions, PostingId
+from job_board.tools.compact_json import compact_json
 
 MOUNT_PATH = "/mcp"
 READ_ONLY = ToolAnnotations(readOnlyHint=True, openWorldHint=False)
+CHANGES = ToolAnnotations(readOnlyHint=False, destructiveHint=False, openWorldHint=False)  # updates, never deletes
 # Only requests addressed to this machine, and none from a web page (browsers send an Origin header; MCP clients
 # such as the chat agent and Claude Code do not), so no site can reach the tools, by DNS rebinding or otherwise.
 LOCAL_HOSTS = ["127.0.0.1:*", "localhost:*", "[::1]:*"]
@@ -28,21 +31,29 @@ BEST_NEW = 5
 POSTING_TEXT_CHARS = 2500
 CV_CHARS = 4000
 SCANNED = "scanned"
-INSTRUCTIONS = "Read-only tools over a personal job board: postings with their LLM fit score, the profile, the companies."
+INSTRUCTIONS = (
+    "Tools over a personal job board: read the postings with their LLM fit score, the profile and the companies; "
+    "move or close a posting, add to its note, start a scan."
+)
 
 
 class BoardTools:
-    """search_postings, get_posting, get_profile, board_summary and list_companies over the repositories. Each answer
-    is compact JSON (a posting row is id, title, company, status, fit, location), so a small local model's context
-    holds many; get_posting gives one posting in full. Nothing here changes the board."""
+    """search_postings, get_posting, get_profile, board_summary and list_companies over the repositories, plus the
+    actions' tools on the same server. Each answer is compact JSON (a posting row is id, title, company, status, fit,
+    location), so a small local model's context holds many; get_posting gives one posting in full. Nothing here
+    changes the board."""
 
-    def __init__(self, postings: PostingRepository, companies: CompanyRepository, profiles: ProfileRepository) -> None:
+    def __init__(
+        self, postings: PostingRepository, companies: CompanyRepository, profiles: ProfileRepository, actions: BoardActions
+    ) -> None:
         self._postings = postings
         self._companies = companies
         self._profiles = profiles
+        self._actions = actions
 
     def server(self) -> FastMCP:
-        """A FastMCP server with every tool, stateless, its endpoint at the root of wherever it is mounted."""
+        """A FastMCP server with every tool (the actions' marked as changing the board), stateless, its endpoint at the
+        root of wherever it is mounted."""
         server = FastMCP(
             "job-board",
             instructions=INSTRUCTIONS,
@@ -55,6 +66,8 @@ class BoardTools:
         )
         for tool in (self.search_postings, self.get_posting, self.get_profile, self.board_summary, self.list_companies):
             server.add_tool(tool, annotations=READ_ONLY, structured_output=False)
+        for action in self._actions.tools():
+            server.add_tool(action, annotations=CHANGES, structured_output=False)
         return server
 
     def search_postings(
@@ -79,15 +92,15 @@ class BoardTools:
             and (min_fit == 0 or (posting.fit is not None and posting.fit >= min_fit))
         ]
         best = self._by_fit(matches)[:limit]
-        return self._json({"count": len(matches), "postings": [self._row(posting) for posting in best]})
+        return compact_json({"count": len(matches), "postings": [self._row(posting) for posting in best]})
 
-    def get_posting(self, posting_id: Annotated[int, Field(description="The posting's id, the number in #42")]) -> str:
+    def get_posting(self, posting_id: PostingId) -> str:
         """One posting in full: the fit score with its reason and the requirements the candidate lacks (gaps), the
         status and outcome, the note, the link and the description."""
         posting = self._postings.get(posting_id)
         if posting is None:
             raise ValueError(f"there is no posting #{posting_id}")
-        return self._json(
+        return compact_json(
             {
                 **self._row(posting),
                 "outcome": posting.outcome,
@@ -106,8 +119,8 @@ class BoardTools:
         looking for (targets) and their CV."""
         profile = self._profiles.get()
         if profile is None:
-            return self._json({"profile": None, "note": "no profile has been saved yet"})
-        return self._json(
+            return compact_json({"profile": None, "note": "no profile has been saved yet"})
+        return compact_json(
             {
                 "wanted_titles": profile.include_keywords,
                 "excluded_titles": profile.exclude_keywords,
@@ -121,7 +134,7 @@ class BoardTools:
     def board_summary(self) -> str:
         """How many postings each board column holds, how many are in the Archive, and the best-fitting New ones."""
         new = [posting for posting in self._postings.search(PostingFilter()) if posting.status is Status.NEW]
-        return self._json(
+        return compact_json(
             {
                 "columns": {status.value: total for status, total in self._postings.facets().totals.items()},
                 "archived": len(self._postings.search(PostingFilter(archived=True))),
@@ -144,7 +157,7 @@ class BoardTools:
         ]
         if only_problems:
             companies = [company for company in companies if company["state"] != SCANNED]
-        return self._json({"count": len(companies), "companies": companies})
+        return compact_json({"count": len(companies), "companies": companies})
 
     @staticmethod
     def _state(company: Company) -> str:
@@ -171,8 +184,3 @@ class BoardTools:
             "fit": posting.fit,
             "location": posting.location,
         }
-
-    @staticmethod
-    def _json(value: dict[str, object]) -> str:
-        """Compact JSON: every token counts in a small model's context."""
-        return json.dumps(value, ensure_ascii=False, separators=(",", ":"), default=str)

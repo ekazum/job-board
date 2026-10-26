@@ -165,7 +165,7 @@ class Scan:
 
     async def _score_and_insert_one(self, scorer: Scorer, target: ScanTarget, job: JobListing) -> None:
         """Score one new job, insert it in New and count it."""
-        fit = await scorer.score(title=job.title, company=target.company, location=job.location, text=job.text)
+        fit = await scorer.score(title=job.title, company=target.company, text=job.text)
         self._insert(target, job, fit)
         self.progress.scored += 1
 

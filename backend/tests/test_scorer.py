@@ -31,7 +31,7 @@ def _scorer(database: Database, llm: MagicMock, cv: str = "Ten years of Python a
 
 
 async def _score(scorer: Scorer, text: str = "Build LLM serving.") -> FitResult:
-    return await scorer.score(title="ML Engineer", company="Acme", location="Tel Aviv, Israel", text=text)
+    return await scorer.score(title="ML Engineer", company="Acme", text=text)
 
 
 @pytest.mark.anyio
@@ -104,5 +104,5 @@ async def test_provider_that_cannot_be_set_up_gives_reason(database: Database) -
 
 def test_system_prompt_states_the_rubric_and_schema() -> None:
     system = prompt("score_system.txt")
-    for phrase in ("Hard requirements first", "Israel", "remote", "intern, student and junior", '"relevant"', '"fit"', '"gaps"'):
+    for phrase in ("Hard requirements first", "location rule", "excluded job titles", '"relevant"', '"fit"', '"gaps"'):
         assert phrase in system

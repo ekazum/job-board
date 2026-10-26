@@ -3,6 +3,7 @@ import { toSearchParams } from "../views/filter-url";
 import type {
   ChatHistory,
   ChatRequest,
+  ChatResume,
   Company,
   CompanyCreate,
   CompanyPatch,
@@ -156,7 +157,28 @@ export async function streamChat(
   signal: AbortSignal,
 ): Promise<void> {
   const body: ChatRequest = { message, thread_id: threadId };
-  const response = await fetch("/api/chat", {
+  await postEvents("/api/chat", body, onEvent, signal);
+}
+
+/** Confirm (approve) or cancel the changes the conversation waits on; the rest of the answer streams like streamChat. */
+export async function resumeChat(
+  threadId: string,
+  approve: boolean,
+  onEvent: (event: ChatStreamEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const body: ChatResume = { approve };
+  await postEvents(`/api/chat/${encodeURIComponent(threadId)}/resume`, body, onEvent, signal);
+}
+
+/** POST body as JSON and hand each server-sent event of the answer to onEvent as it arrives. */
+async function postEvents(
+  url: string,
+  body: unknown,
+  onEvent: (event: ChatStreamEvent) => void,
+  signal: AbortSignal,
+): Promise<void> {
+  const response = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),

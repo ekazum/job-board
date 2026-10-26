@@ -4,9 +4,11 @@ CANDIDATE CV:
 CANDIDATE TARGETS:
 {targets}
 
+CANDIDATE JOB TITLES:
+{job_titles}
+
 JOB POSTING:
 Title: {title}
 Company: {company}
-Location: {location}
 Description:
 {text}

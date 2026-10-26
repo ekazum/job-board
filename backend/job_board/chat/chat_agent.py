@@ -15,9 +15,10 @@ from langchain_core.tools import BaseTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from langgraph.errors import GraphRecursionError
+from langgraph.types import Command
 
 from job_board.chat.chat_event import ChatEvent
-from job_board.chat.chat_graph import AGENT, TOOLS, ChatGraph
+from job_board.chat.chat_graph import AGENT, CANCELLED, CONFIRM, TOOLS, ChatGraph, Preview
 from job_board.chat.chat_state import ChatState
 from job_board.chat.chat_model_factory import ChatModelFactory
 from job_board.config.chat_settings import ChatSettings
@@ -35,7 +36,8 @@ TARGETS_CHARS = 800
 
 class ChatAgent:
     """Answers one message at a time per conversation, streaming ChatEvents: the thread id, the answer's text as the
-    model writes it, each tool it calls and what came back, then done or error.
+    model writes it, each tool it calls and what came back, the changes to confirm when it asks to change the board,
+    then done or error. resume() goes on from a confirm; a message sent instead cancels the changes waiting for one.
 
     Conversations are saved by LangGraph's SQLite checkpointer in db_path (chat.db beside the board's database), one
     thread each, so they survive a reload or a restart. For every message the model and the chat settings are read
@@ -49,12 +51,14 @@ class ChatAgent:
         model_factory: ChatModelFactory,
         settings_loader: Callable[[], ChatSettings],
         profile_loader: Callable[[], Profile | None],
+        preview: Preview,
         tools_loader: ToolsLoader | None = None,
     ) -> None:
         self._db_path = db_path
         self._model_factory = model_factory
         self._settings_loader = settings_loader
         self._profile_loader = profile_loader
+        self._preview = preview
         self._tools_loader = tools_loader or self._mcp_tools
         self._saver: AsyncSqliteSaver | None = None
 
@@ -69,12 +73,28 @@ class ChatAgent:
                 self._saver = None
 
     async def stream(self, thread_id: str, message: str, mcp_url: str) -> AsyncIterator[ChatEvent]:
-        """The answer to message in conversation thread_id, as it is written. The graph runs as a task, so whatever
-        stops it (the model unreachable, the step limit) ends the stream with an error event; leaving early (the user
-        pressed Stop) cancels it."""
+        """The answer to message in conversation thread_id, as it is written."""
         yield ChatEvent("thread", {"thread_id": thread_id})
+        async for event in self._events(thread_id, mcp_url, message):
+            yield event
+
+    async def resume(self, thread_id: str, approve: bool, mcp_url: str) -> AsyncIterator[ChatEvent]:
+        """The rest of the answer once the user confirmed (approve) or cancelled the changes it waits on."""
+        async for event in self._events(thread_id, mcp_url, approve):
+            yield event
+
+    async def pending(self, thread_id: str) -> list[str]:
+        """The changes waiting for the user's confirm in a conversation, in words; [] when none."""
+        found = await self._open_saver().aget_tuple(self._config(thread_id))
+        values = [] if found is None else as_list(found.checkpoint["channel_values"].get("pending")) or []
+        return [value for value in values if isinstance(value, str)]
+
+    async def _events(self, thread_id: str, mcp_url: str, turn: str | bool) -> AsyncIterator[ChatEvent]:
+        """The graph's events on a message or a confirm's answer. The graph runs as a task, so whatever stops it (the
+        model unreachable, the step limit) ends the stream with an error event; leaving early (the user pressed Stop)
+        cancels it."""
         events: asyncio.Queue[ChatEvent | None] = asyncio.Queue()
-        task = asyncio.create_task(self._run(thread_id, message, mcp_url, events))
+        task = asyncio.create_task(self._run(thread_id, mcp_url, turn, events))
         task.add_done_callback(lambda _: events.put_nowait(None))
         try:
             while (event := await events.get()) is not None:
@@ -85,7 +105,7 @@ class ChatAgent:
 
     async def history(self, thread_id: str) -> list[ChatLine] | None:
         """The conversation so far (questions, answers and the tools used); None when there is no such thread."""
-        found = await self._open_saver().aget_tuple({"configurable": {"thread_id": thread_id}})
+        found = await self._open_saver().aget_tuple(self._config(thread_id))
         if found is None:
             return None
         messages = as_list(found.checkpoint["channel_values"].get("messages")) or []
@@ -95,23 +115,38 @@ class ChatAgent:
         """Forget a conversation."""
         await self._open_saver().adelete_thread(thread_id)
 
-    async def _run(self, thread_id: str, message: str, mcp_url: str, events: asyncio.Queue[ChatEvent | None]) -> None:
-        """Run the graph on one message, queueing its events."""
+    async def _run(self, thread_id: str, mcp_url: str, turn: str | bool, events: asyncio.Queue[ChatEvent | None]) -> None:
+        """Run the graph on a message or a confirm's answer, queueing its events. A message sent while changes wait
+        for a confirm is that confirm's answer too: it cancels them."""
         settings = self._settings_loader()
-        saver = self._open_saver()
         tools = await self._tools_loader(mcp_url)
-        graph = ChatGraph(self._model_factory.create(), tools, self._system_prompt, settings.history_tokens).compile(saver)
-        config: RunnableConfig = {"configurable": {"thread_id": thread_id}, "recursion_limit": settings.max_steps}
-        question = ChatState(messages=[HumanMessage(message)])
-        async for part in graph.astream(question, config, stream_mode=["messages", "updates"], version="v2"):
+        chat_graph = ChatGraph(self._model_factory.create(), tools, self._system_prompt, settings.history_tokens, self._preview)
+        graph = chat_graph.compile(self._open_saver())
+        config: RunnableConfig = {**self._config(thread_id), "recursion_limit": settings.max_steps}
+        if isinstance(turn, bool) or await self.pending(thread_id):
+            run_input: ChatState | Command[str] = Command(resume=turn)
+        else:
+            run_input = ChatState(messages=[HumanMessage(turn)])
+        async for part in graph.astream(run_input, config, stream_mode=["messages", "updates"], version="v2"):
             if part["type"] == "messages":
                 found = self._token(*part["data"])
             elif part["type"] == "updates":
-                found = [event for node, update in part["data"].items() for event in self._step_events(node, update)]
+                found = [
+                    event
+                    for node, update in part["data"].items()
+                    for event in self._step_events(node, update, chat_graph.changing)
+                ]
             else:
                 found = []
             for event in found:
                 events.put_nowait(event)
+        if changes := await self.pending(thread_id):
+            events.put_nowait(ChatEvent("confirm", {"changes": changes}))
+
+    @staticmethod
+    def _config(thread_id: str) -> RunnableConfig:
+        """The checkpointer's key for a conversation."""
+        return {"configurable": {"thread_id": thread_id}}
 
     def _open_saver(self) -> AsyncSqliteSaver:
         """The conversation store; RuntimeError outside the app's lifetime."""
@@ -129,11 +164,7 @@ class ChatAgent:
         if profile is None:
             return "No profile has been saved yet."
         remote = ", fully remote jobs welcome" if profile.allow_fully_remote else ""
-        lines = [
-            f"Location: {profile.location or 'not set'}{remote}",
-            f"Wanted job titles: {', '.join(profile.include_keywords) or 'any'}",
-            f"Excluded job titles: {', '.join(profile.exclude_keywords) or 'none'}",
-        ]
+        lines = [f"Location: {profile.location or 'not set'}{remote}", profile.job_titles()]
         if profile.targets.strip():
             lines.append(f"Looking for: {profile.targets.strip()[:TARGETS_CHARS]}")
         return "\n".join(lines)
@@ -145,15 +176,19 @@ class ChatAgent:
             return [ChatEvent("token", {"text": message.text})]
         return []
 
-    def _step_events(self, node: str, update: object) -> list[ChatEvent]:
-        """A tool event per tool the agent asked for, a tool_result event per result."""
+    def _step_events(self, node: str, update: object, changing: frozenset[str]) -> list[ChatEvent]:
+        """A tool event per tool the agent asked for, a tool_result event per result, a cancelled call's included
+        (changed: a tool that changes the board did)."""
         messages = as_list((as_dict(update) or {}).get("messages")) or []
         events: list[ChatEvent] = []
         for message in messages:
             if node == AGENT and isinstance(message, AIMessage):
                 events.extend(ChatEvent("tool", {"name": call["name"], "args": call["args"]}) for call in message.tool_calls)
-            elif node == TOOLS and isinstance(message, ToolMessage):
-                events.append(ChatEvent("tool_result", {"name": message.name, "summary": self._summary(message)}))
+            elif node in (TOOLS, CONFIRM) and isinstance(message, ToolMessage):
+                changed = node == TOOLS and message.name in changing and message.status != "error"
+                events.append(
+                    ChatEvent("tool_result", {"name": message.name, "summary": self._summary(message), "changed": changed})
+                )
         return events
 
     def _lines(self, message: object) -> list[ChatLine]:
@@ -168,7 +203,9 @@ class ChatAgent:
 
     @staticmethod
     def _summary(message: ToolMessage) -> str:
-        """"12 found" for a search, "failed" for an error, "done" otherwise."""
+        """"12 found" for a search, "cancelled" when the user said no, "failed" for an error, "done" otherwise."""
+        if message.text == CANCELLED:
+            return "cancelled"
         if message.status == "error":
             return "failed"
         try:

@@ -48,9 +48,14 @@ class RunRoutes:
 
     async def run_scan(self) -> ScanStatus:
         """Start scanning verified, enabled companies; matching jobs arrive as cards while it runs."""
-        if self._lock.locked() or not self._scan_job.start():
+        if not self.start_scan():
             raise self._busy()
         return self._scan_job.status()
+
+    def start_scan(self) -> bool:
+        """Begin a scan in the background (the Scan button, the chat's start_scan); False while a discover or scan run
+        is in progress."""
+        return not self._lock.locked() and self._scan_job.start()
 
     def scan_status(self) -> ScanStatus:
         """Progress of the current or last scan."""

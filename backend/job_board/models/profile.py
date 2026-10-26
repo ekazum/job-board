@@ -32,3 +32,10 @@ class Profile(BaseModel):
     def country(self) -> str | None:
         """The country (or countries) the location resolves to, e.g. "IL"; None when it does not resolve."""
         return LocationResolver.shared().resolve(self.location) if self.location.strip() else None
+
+    def job_titles(self) -> str:
+        """The job titles the candidate wants and excludes, two lines for the LLM prompts (the scorer's and the
+        chat's)."""
+        wanted = ", ".join(self.include_keywords) or "any"
+        excluded = ", ".join(self.exclude_keywords) or "none"
+        return f"Wanted job titles: {wanted}\nExcluded job titles: {excluded}"

@@ -194,6 +194,10 @@ const chatWindow = new ChatWindow({
   onOpenPosting: (id) => {
     getPosting(id).then(openDetails, (error: unknown) => notice.error(`Could not open #${id}: ${errorMessage(error)}`));
   },
+  onBoardChanged: () => {
+    void loadPostings();
+    companiesView.followScan().catch((error: unknown) => notice.error(errorMessage(error)));
+  },
 });
 document.body.append(chatWindow.element);
 

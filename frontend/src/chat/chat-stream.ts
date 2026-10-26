@@ -1,4 +1,4 @@
-/** One server-sent event of a chat answer: thread, token, tool, tool_result, done or error. */
+/** One server-sent event of a chat answer: thread, token, tool, tool_result, confirm, done or error. */
 export interface ChatStreamEvent {
   event: string;
   data: Record<string, unknown>;

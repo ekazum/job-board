@@ -193,10 +193,12 @@ Upload your CV in the **Profile** view (drop a `.pdf`, `.docx`, `.md` or `.txt`,
 (pypdf / python-docx / plain read) into an editable box, the original is kept in `data/profile/`, and you add
 **Targets** (what you are looking for). Save stores both in the single-row `profile` table.
 
-`scorer.py` sends the profile plus a posting's title, company, location and description (cut to
-`llm.max_text_chars`) to the active provider and expects strict JSON
-`{"relevant": bool, "fit": 0-10, "reason": "...", "gaps": ["..."]}`; the rubric in `prompts/score_system.txt` checks
-hard requirements first, accepts only Israel or remote-from-Israel, and rejects intern/student/junior roles. The
+`scorer.py` sends the CV, the targets and the wanted and excluded job titles, plus a posting's title, company and
+description (cut to `llm.max_text_chars`), to the active provider and expects strict JSON
+`{"relevant": bool, "fit": 0-10, "reason": "...", "gaps": ["..."]}`. The rubric in `prompts/score_system.txt` checks
+hard requirements first, then rates the match. It does not judge a role's level (student, junior, senior): the job
+titles in the profile decide which roles you want. It does not judge the location either, since the
+[location rule](#location) has already checked it. The
 answer is validated with Pydantic; a bad answer is retried once, then stored as `fit = NULL` with reason
 `parse error`. Without a profile the reason is `no profile`. 429 and 5xx answers are retried once (honouring
 `Retry-After`), and requests run `providers.<name>.concurrency` at a time.
@@ -214,21 +216,30 @@ answer is validated with Pydantic; a bad answer is retried once, then stored as 
 ## Chat
 
 The **Chat** button (top right) opens a chat window that answers questions about your board from its own data:
-"Which new jobs fit me best?", "What gaps keep coming up?", "Compare #42 and #57". It can only read; changing cards
-from the chat is not built yet. A `#42` in an answer opens that posting. The conversation is kept on the server
-(`data/chat.db`), so it survives a reload; **New chat** starts over.
+"Which new jobs fit me best?", "What gaps keep coming up?", "Compare #42 and #57". It can also change the board:
+"Move #42 to Applied", "Close #57, they rejected me", "Add a note to #42: call Sunday", "Scan for new jobs". Nothing
+changes until you say so: the chat shows a card with the change in words ("Move #42 “ML Engineer” at Acme from New
+to Applied") and **Confirm** / **Cancel**. Confirm makes it and the board refreshes; Cancel, or sending another
+message instead, changes nothing. A `#42` in an answer opens that posting. The conversation is kept on the server
+(`data/chat.db`), so it survives a reload, a waiting card included; **New chat** starts over.
 
 How it works:
 
 - **Agent** (`chat/`): a LangGraph graph, `agent -> tools -> agent ...` until the model answers, over a LangChain chat
   model. Every message is saved by LangGraph's SQLite checkpointer, one thread per conversation; earlier turns are
   sent back cut to `chat.history_tokens`, questions and answers only. The answer streams to the window as
-  server-sent events (`token`, `tool`, `tool_result`, then `done` or `error`).
-- **Tools** (`tools/board_tools.py`): an MCP server at `/mcp/` with `search_postings`, `get_posting`, `get_profile`,
-  `board_summary` and `list_companies`, all read-only and answering in compact JSON. The agent loads them through
-  `langchain-mcp-adapters`; any other MCP client can use them too, e.g. Claude Code:
-  `claude mcp add --transport http job-board http://127.0.0.1:8000/mcp/` (only while the server runs). Only requests
-  addressed to this machine are answered.
+  server-sent events (`token`, `tool`, `tool_result`, `confirm`, then `done` or `error`).
+- **Confirm** (`chat/chat_graph.py`): a tool not marked read-only changes the board. When the model calls one, the
+  graph stops at a `confirm` node (LangGraph `interrupt`) with the change in words (`chat/change_preview.py`) and
+  saves the conversation there. `POST /api/chat/{id}/resume` goes on from it: approved, the tools run; cancelled,
+  each call gets a "cancelled" result and the chat answers "Cancelled, not done: ..." without another model call.
+- **Tools** (`tools/`): an MCP server at `/mcp/`. Read-only (`board_tools.py`): `search_postings`, `get_posting`,
+  `get_profile`, `board_summary` and `list_companies`. Changing the board (`board_actions.py`): `move_posting`,
+  `close_posting` (with an outcome), `add_note` (adds a line, keeps the note) and `start_scan`. They answer in compact
+  JSON. The agent loads them through `langchain-mcp-adapters`; any other MCP client can use them too, e.g. Claude
+  Code: `claude mcp add --transport http job-board http://127.0.0.1:8000/mcp/` (only while the server runs), which
+  asks you before each changing tool with its own permission prompt. Only requests addressed to this machine are
+  answered.
 - **Model** (`chat/chat_model_factory.py`): the `chat:` section of `config.yaml`, separate from scoring:
 
 ```yaml
@@ -270,10 +281,11 @@ OpenAI-compatible endpoint (`ChatOpenAI`) with its key from `.env`, so switching
 | GET | `/api/rescore/status` | `{running, done, total, error}` |
 | POST | `/api/rescore/filters` | applies the profile's keywords and location to the stored postings, no scoring → `{archived, restored}`; 409 during Re-score all |
 | POST | `/api/rescore/{id}` | keywords and location rule, then re-score one posting → the posting; 404 if missing |
-| POST | `/api/chat` | `{message, thread_id?}` → the answer as server-sent events: `thread` (the id of a new conversation), `token`, `tool`, `tool_result`, then `done` or `error` |
-| GET | `/api/chat/{thread_id}` | `{thread_id, lines: [{role, text}]}` (role: user, assistant or tool); 404 if missing |
+| POST | `/api/chat` | `{message, thread_id?}` → the answer as server-sent events: `thread` (the id of a new conversation), `token`, `tool`, `tool_result` (`changed`: the board changed), `confirm` (`changes` waiting for the user), then `done` or `error`. Sent while changes wait, the message cancels them |
+| POST | `/api/chat/{thread_id}/resume` | `{approve}` → the rest of the answer, as for `/api/chat`; 409 if nothing waits for a confirm |
+| GET | `/api/chat/{thread_id}` | `{thread_id, lines: [{role, text}], pending}` (role: user, assistant or tool; pending: the changes waiting for a confirm); 404 if missing |
 | DELETE | `/api/chat/{thread_id}` | forget a conversation → 204 |
-| POST | `/mcp/` | the board's MCP server (streamable HTTP, read-only tools) |
+| POST | `/mcp/` | the board's MCP server (streamable HTTP): read-only tools and the ones that change the board |
 
 Interactive docs at `/docs` while the server runs.
 
@@ -296,7 +308,7 @@ backend/job_board/
     company_routes.py         /api/companies
     run_routes.py             /api/discover, /api/scan, /api/scan/status (one run at a time)
     settings_routes.py        /api/settings/llm (show, switch provider, test)
-    chat_routes.py            /api/chat (send, as server-sent events; history; forget)
+    chat_routes.py            /api/chat (send, as server-sent events; resume from a confirm; history; forget)
     profile_routes.py         /api/profile (upload, show, edit)
     rescore_routes.py         /api/rescore (all in the background, progress, one)
   config/
@@ -322,10 +334,13 @@ backend/job_board/
     profile_sweep.py          applies the keywords and the location rule to the stored postings
   chat/
     chat_agent.py             streams answers, keeps conversations (LangGraph SQLite checkpointer, data/chat.db)
-    chat_graph.py             the LangGraph graph: agent -> tools -> agent
+    chat_graph.py             the LangGraph graph: agent -> (confirm) -> tools -> agent
+    change_preview.py         a board change the agent asks for, in words, for the confirm card
     chat_model_factory.py     the LangChain chat model for config.yaml's chat section (ChatOllama, ChatOpenAI)
   tools/
-    board_tools.py            the board's read-only MCP tools, served at /mcp/
+    board_tools.py            the board's read-only MCP tools and the MCP server at /mcp/
+    board_actions.py          the MCP tools that change the board (move, close, note, scan)
+    compact_json.py           the tools' compact JSON answers
   runs/
     discover.py               Discover orchestrator + CLI
     scan.py                   Scan orchestrator + CLI
@@ -360,7 +375,7 @@ frontend/src/               Vite + TypeScript, no framework
     posting-details.ts        location, country, link, fit, description, note, outcome
     paste-form.ts             add a posting found elsewhere
   chat/
-    chat-window.ts            the chat window: streamed answers, tool chips, #id links, New chat
+    chat-window.ts            the chat window: streamed answers, tool chips, #id links, confirm card, New chat
     chat-stream.ts            server-sent events from a fetch body
   ui/
     outcome-dialog.ts         "How did it end?" when dropping into Closed

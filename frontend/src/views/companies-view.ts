@@ -68,14 +68,19 @@ export class CompaniesView {
     try {
       this.companies = (await getCompanies()).sort(byName);
       this.render();
-      const status = await getScanStatus();
-      if (status.running && this.polling === undefined) {
-        this.reportedNew = status.scored;
-        this.showScan(status);
-        this.poll();
-      }
+      await this.followScan();
     } catch (error) {
       this.callbacks.onError(`Could not load companies: ${errorMessage(error)}`);
+    }
+  }
+
+  /** Follow a scan started elsewhere (the chat, or before a reload): its progress, and the board as cards arrive. */
+  async followScan(): Promise<void> {
+    const status = await getScanStatus();
+    if (status.running && this.polling === undefined) {
+      this.reportedNew = status.scored;
+      this.showScan(status);
+      this.poll();
     }
   }
 
