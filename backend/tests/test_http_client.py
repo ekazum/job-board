@@ -5,7 +5,7 @@ import asyncio
 import httpx
 import pytest
 
-from job_board.http_client import HttpClient
+from job_board.utils.http_client import HttpClient
 
 from tests.http_fakes import FakeWeb
 
@@ -64,6 +64,15 @@ async def test_post_json_sends_the_body_and_asks_for_json() -> None:
         await http.post_json("https://api.example/jobs", {"searchText": "llm"})
     request = web.requests[0]
     assert (request.method, request.content, request.headers["accept"]) == ("POST", b'{"searchText":"llm"}', "application/json")
+
+
+@pytest.mark.anyio
+async def test_get_sends_extra_headers() -> None:
+    web = FakeWeb()
+    web.json("https://acme.careers.hibob.com/api/job-ad", {"ok": True})
+    async with web.client() as http:
+        await http.get("https://acme.careers.hibob.com/api/job-ad", {"companyIdentifier": "acme"})
+    assert web.requests[0].headers["companyidentifier"] == "acme"
 
 
 @pytest.mark.anyio

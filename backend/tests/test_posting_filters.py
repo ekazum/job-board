@@ -7,11 +7,11 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from job_board.app_config import AppConfig
 from job_board.app_factory import AppFactory
-from job_board.database import Database
+from job_board.config.app_config import AppConfig
 from job_board.enums.source import Source
-from job_board.posting_repository import PostingRepository
+from job_board.storage.database import Database
+from job_board.storage.posting_repository import PostingRepository
 
 ROWS: list[tuple[Source, str, str, str, int | None]] = [
     (Source.GREENHOUSE, "Acme", "Senior AI Engineer", "Build LLM agents.", 9),
@@ -33,7 +33,7 @@ def _seed(database: Database) -> None:
 
 @pytest.fixture
 def client(tmp_path: Path) -> Iterator[TestClient]:
-    config = AppConfig(db_path=tmp_path / "data" / "job_board.db", include_keywords=(), exclude_keywords=(), companies=())
+    config = AppConfig(db_path=tmp_path / "data" / "job_board.db", companies=())
     with TestClient(AppFactory(lambda: config, tmp_path / "no-dist").build()) as test_client:
         _seed(Database(config.db_path))
         yield test_client
@@ -93,14 +93,12 @@ def test_postings_carry_fit(client: TestClient) -> None:
     assert (fits["Senior AI Engineer"], fits["ML Engineer"]) == (9, None)
 
 
-def test_archive_holds_scorer_rejects_and_is_left_out_of_the_board(client: TestClient, tmp_path: Path) -> None:
+def test_a_scored_posting_closed_as_not_relevant_stays_on_the_board(client: TestClient, tmp_path: Path) -> None:
     database = Database(tmp_path / "data" / "job_board.db")
     with closing(database.connect()) as connection, connection:
         connection.execute("UPDATE postings SET status = 'closed', outcome = 'not_relevant' WHERE title = 'Security Researcher'")
-    board = _titles(client)
-    archive = _titles(client, "?archived=true")
-    assert "Security Researcher" not in board and archive == ["Security Researcher"]
-    assert client.get("/api/postings/facets").json()["totals"]["closed"] == 0  # not counted on the board
+    assert "Security Researcher" in _titles(client) and _titles(client, "?archived=true") == []
+    assert client.get("/api/postings/facets").json()["totals"]["closed"] == 1  # in Closed, where you put it
 
 
 def _set(database: Database, title: str, **columns: object) -> None:
@@ -118,11 +116,12 @@ def test_location_is_a_substring_with_spellings_normalized(client: TestClient, t
     assert _titles(client, "?location=israel&q=senior") == ["Senior AI Engineer"]
 
 
-def test_archive_holds_location_rejects_and_purge_deletes_only_them(client: TestClient, tmp_path: Path) -> None:
+def test_archive_holds_rule_rejects_and_purge_deletes_only_them(client: TestClient, tmp_path: Path) -> None:
     database = Database(tmp_path / "data" / "job_board.db")
     _set(database, "Security Researcher", status="closed", outcome="not_relevant", fit_reason="location: Berlin")
-    _set(database, "ML Engineer", status="closed", outcome="not_relevant", fit=2, fit_reason="far off")  # the scorer's
-    assert _titles(client, "?archived=true") == ["ML Engineer", "Security Researcher"]
-    assert client.delete("/api/postings/location-rejects").json() == {"deleted": 1}
-    assert _titles(client, "?archived=true") == ["ML Engineer"]
-    assert len(_titles(client)) == 2
+    _set(database, "Senior AI Engineer", status="closed", outcome="not_relevant", fit_reason='keywords: excludes "senior"')
+    _set(database, "ML Engineer", status="closed", outcome="not_relevant", fit=2, fit_reason="far off")  # you closed it
+    assert _titles(client, "?archived=true") == ["Security Researcher", "Senior AI Engineer"]
+    assert client.delete("/api/postings/rejects").json() == {"deleted": 2}
+    assert _titles(client, "?archived=true") == []
+    assert sorted(_titles(client)) == ["Chief Architect", "ML Engineer"]

@@ -1,18 +1,19 @@
--- job-board schema, version 6. Runs only on a new database; existing ones are brought up to date by
+-- job-board schema, version 8. Runs only on a new database; existing ones are brought up to date by
 -- sql/migrations/<version>_*.sql. The CHECK value lists must match job_board/enums
 -- (tests/test_database.py tries every enum value against them).
 
 PRAGMA journal_mode = WAL;
 
--- company_uid/token: Comeet careers API; tenant/wd_host/site: Workday; last_error: latest discover/scan failure.
+-- company_uid/token: Comeet careers API; tenant/wd_host/site: Workday (tenant: the API domain on Eightfold);
+-- last_error: latest discover/scan failure.
 CREATE TABLE IF NOT EXISTS companies
 (
     id           INTEGER PRIMARY KEY,
     name         TEXT    NOT NULL UNIQUE COLLATE NOCASE,
     domain       TEXT,
     careers_url  TEXT,
-    platform     TEXT CHECK (platform IN ('greenhouse', 'lever', 'ashby', 'comeet', 'workday', 'google', 'microsoft', 'apple',
-                                      'amazon', 'meta', 'none')),
+    platform     TEXT CHECK (platform IN ('greenhouse', 'lever', 'ashby', 'comeet', 'workday', 'eightfold', 'hibob',
+                                      'google', 'microsoft', 'apple', 'amazon', 'meta', 'none')),
     slug         TEXT,
     company_uid  TEXT,
     token        TEXT,
@@ -29,8 +30,8 @@ CREATE TABLE IF NOT EXISTS companies
 CREATE TABLE IF NOT EXISTS postings
 (
     id          INTEGER PRIMARY KEY,
-    source      TEXT NOT NULL CHECK (source IN ('greenhouse', 'lever', 'ashby', 'comeet', 'workday', 'google', 'microsoft', 'apple',
-                                         'amazon', 'meta', 'manual')),
+    source      TEXT NOT NULL CHECK (source IN ('greenhouse', 'lever', 'ashby', 'comeet', 'workday', 'eightfold', 'hibob',
+                                         'google', 'microsoft', 'apple', 'amazon', 'meta', 'manual')),
     external_id TEXT NOT NULL,
     company     TEXT NOT NULL,
     title       TEXT NOT NULL,
@@ -52,8 +53,9 @@ CREATE TABLE IF NOT EXISTS postings
 
 CREATE INDEX IF NOT EXISTS idx_postings_status_created ON postings (status, created_at DESC);
 
--- The candidate the LLM scorer compares postings against and the location postings must be in; exactly one row,
--- created here with an empty location, so no posting passes the location rule until one is set.
+-- The candidate the LLM scorer compares postings against, the job-title keywords (JSON arrays) and the location
+-- postings must be in; exactly one row, created here with no keywords (every title passes) and an empty location, so
+-- no posting passes the location rule until one is set.
 CREATE TABLE IF NOT EXISTS profile
 (
     id                 INTEGER PRIMARY KEY CHECK (id = 1),
@@ -62,11 +64,13 @@ CREATE TABLE IF NOT EXISTS profile
     filename           TEXT,
     uploaded_at        TEXT,
     location           TEXT    NOT NULL DEFAULT '',
-    allow_fully_remote INTEGER NOT NULL DEFAULT 0 CHECK (allow_fully_remote IN (0, 1))
+    allow_fully_remote INTEGER NOT NULL DEFAULT 0 CHECK (allow_fully_remote IN (0, 1)),
+    include_keywords   TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(include_keywords)),
+    exclude_keywords   TEXT    NOT NULL DEFAULT '[]' CHECK (json_valid(exclude_keywords))
 );
 
 INSERT INTO profile (id)
 VALUES (1)
 ON CONFLICT (id) DO NOTHING;
 
-PRAGMA user_version = 6;
+PRAGMA user_version = 8;

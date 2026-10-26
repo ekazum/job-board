@@ -1,21 +1,21 @@
 import "./style.css";
 
-import { errorMessage, getPostingFacets, getPostings } from "./api";
-import { ArchiveView } from "./archive-view";
-import { Board } from "./board";
-import { CompaniesView } from "./companies-view";
-import { ConfirmDialog } from "./confirm-dialog";
-import { el } from "./dom";
-import { isArchived, type Posting, type PostingQuery } from "./domain";
-import { FilterBar } from "./filter-bar";
-import { fromSearchParams, isEmpty, loadRemembered, remember, writeToUrl } from "./filter-url";
-import { Notice } from "./notice";
-import { OutcomeDialog } from "./outcome-dialog";
-import { PasteForm } from "./paste-form";
-import { PostingDetails } from "./posting-details";
-import { ProfileView } from "./profile-view";
-import { SettingsView } from "./settings-view";
-import { SidePanel } from "./side-panel";
+import { errorMessage, getLlmSettings, getPostingFacets, getPostings } from "./api/api";
+import { isArchived, type Posting, type PostingQuery } from "./api/domain";
+import { PasteForm } from "./panels/paste-form";
+import { PostingDetails } from "./panels/posting-details";
+import { SidePanel } from "./panels/side-panel";
+import { ConfirmDialog } from "./ui/confirm-dialog";
+import { el } from "./ui/dom";
+import { Notice } from "./ui/notice";
+import { OutcomeDialog } from "./ui/outcome-dialog";
+import { ArchiveView } from "./views/archive-view";
+import { Board } from "./views/board";
+import { CompaniesView } from "./views/companies-view";
+import { FilterBar } from "./views/filter-bar";
+import { fromSearchParams, isEmpty, loadRemembered, remember, writeToUrl } from "./views/filter-url";
+import { ProfileView } from "./views/profile-view";
+import { SettingsView } from "./views/settings-view";
 
 const app = document.querySelector<HTMLDivElement>("#app");
 if (app === null) {
@@ -141,6 +141,15 @@ async function loadPostings(): Promise<void> {
   }
 }
 
+/** llm.threshold, so the board greys fits below it; without it the fits just show plain. */
+async function loadThreshold(): Promise<void> {
+  try {
+    board.setThreshold((await getLlmSettings()).threshold);
+  } catch {
+    // the board works without it
+  }
+}
+
 /** The filter in the address bar wins (a reload or a shared link); otherwise the last one used in this browser. */
 function initialFilter(): PostingQuery {
   const fromUrl = fromSearchParams(new URLSearchParams(window.location.search));
@@ -186,3 +195,4 @@ filterBar.setQuery(filter);
 writeToUrl(filter);
 showView();
 void loadPostings();
+void loadThreshold();

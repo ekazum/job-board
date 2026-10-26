@@ -9,8 +9,8 @@ from job_board.boards.board_unavailable_error import BoardUnavailableError
 from job_board.boards.job_listing import JobListing
 from job_board.enums.platform import Platform
 from job_board.enums.source import Source
-from job_board.http_client import HttpClient
-from job_board.http_response import HttpResponse
+from job_board.utils.http_client import HttpClient
+from job_board.utils.http_response import HttpResponse
 
 NOT_FOUND_STATUSES = frozenset({404, 410})
 
@@ -49,13 +49,13 @@ class BoardSource(ABC):
         del board  # most platforms' public APIs carry no board name
         return None
 
-    async def _get(self, url: str) -> HttpResponse | None:
+    async def _get(self, url: str, headers: Mapping[str, str] | None = None) -> HttpResponse | None:
         """GET a board URL: the response on 200, None on 404/410, BoardUnavailableError otherwise."""
-        return self._checked(url, await self._http.get(url))
+        return self._checked(url, await self._http.get(url, headers))
 
-    async def _get_json(self, url: str) -> object | None:
+    async def _get_json(self, url: str, headers: Mapping[str, str] | None = None) -> object | None:
         """GET and decode a JSON body; None on 404/410."""
-        response = await self._get(url)
+        response = await self._get(url, headers)
         return None if response is None else self._decoded(url, response)
 
     async def _post_json(self, url: str, payload: object) -> object | None:

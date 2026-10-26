@@ -5,9 +5,9 @@ from functools import partial
 import uvicorn
 from dotenv import load_dotenv
 
-from job_board.app_config import AppConfig
 from job_board.app_factory import AppFactory
-from job_board.paths import CONFIG_PATH, ENV_PATH, FRONTEND_DIST
+from job_board.config.app_config import AppConfig
+from job_board.config.paths import CONFIG_PATH, ENV_PATH, FRONTEND_DIST
 
 HOST = "127.0.0.1"
 PORT = 8000

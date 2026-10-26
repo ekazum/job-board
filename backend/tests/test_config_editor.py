@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from job_board.config_editor import ConfigEditor
+from job_board.config.config_editor import ConfigEditor
 
 CONFIG = """# top comment
 db_path: data/job_board.db

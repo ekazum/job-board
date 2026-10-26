@@ -10,10 +10,11 @@ from job_board.boards.board_ref import BoardRef
 from job_board.boards.board_unavailable_error import BoardUnavailableError
 from job_board.boards.comeet_source import ComeetSource
 from job_board.boards.greenhouse_source import GreenhouseSource
+from job_board.boards.hibob_source import HibobSource
 from job_board.boards.lever_source import LeverSource
 from job_board.boards.workday_source import WorkdaySource
 from job_board.enums.platform import Platform
-from job_board.keyword_filter import KeywordFilter
+from job_board.rules.keyword_filter import KeywordFilter
 
 from job_board.utils.json_values import as_str, dicts
 
@@ -30,6 +31,42 @@ WORKDAY = BoardRef(Platform.WORKDAY, "nvidia/NVIDIAExternalCareerSite", tenant="
 
 def _board(platform: Platform, slug: str) -> BoardRef:
     return BoardRef(platform, slug)
+
+
+# --- HiBob ------------------------------------------------------------------------------------------------
+
+
+@pytest.mark.anyio
+async def test_hibob_site_lists_every_job_with_the_company_header() -> None:
+    headers: list[str | None] = []
+    jobs = [
+        {
+            "id": "96c4f519-f64b-4a99-941f-8e2ca79e004c",
+            "title": "Senior IT Platform Engineer",
+            "country": "Israel",
+            "workspaceType": "Hybrid",
+            "description": "<strong>About Us</strong><br>HiBob helps businesses.",
+            "requirements": "<ul><li>6+ years</li></ul>",
+        },
+        {"id": "7", "title": "Implementation Manager", "country": "Australia", "workspaceType": "Remote"},
+    ]
+
+    def job_ads(request: httpx.Request) -> httpx.Response:
+        headers.append(request.headers.get("companyIdentifier"))
+        return httpx.Response(200, json={"filterGroups": [], "jobAdDetails": jobs}, request=request)
+
+    web = FakeWeb()
+    web.route("GET", "https://hibob-fa0ad69d0cb34a.careers.hibob.com/api/job-ad", job_ads)
+    async with web.client() as http:
+        listings = await HibobSource(http).fetch_jobs(_board(Platform.HIBOB, "hibob-fa0ad69d0cb34a"))
+    assert headers == ["hibob-fa0ad69d0cb34a"]
+    assert listings is not None and [(job.title, job.location, job.country) for job in listings] == [
+        ("Senior IT Platform Engineer", "Israel", "Israel"),
+        ("Implementation Manager", "Australia, Remote", "Australia"),
+    ]
+    engineer = listings[0]
+    assert engineer.url == "https://hibob-fa0ad69d0cb34a.careers.hibob.com/jobs/96c4f519-f64b-4a99-941f-8e2ca79e004c"
+    assert engineer.text.startswith("About Us") and "6+ years" in engineer.text
 
 
 # --- Greenhouse -------------------------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 
 import pytest
 
-from job_board.keyword_filter import KeywordFilter
+from job_board.rules.keyword_filter import KeywordFilter
 
 ROLES = KeywordFilter(
     include=["researcher", "AI + engineer", "VP + R&D", "director + data science", "architect", "CTO"],
@@ -48,6 +48,22 @@ def test_symbols_and_multi_word_parts() -> None:
     assert keyword_filter.matches("Senior .NET Developer")
     assert keyword_filter.matches("Machine\nLearning Engineer")
     assert not keyword_filter.matches("C Developer")
+
+
+def test_phrases_match_as_written() -> None:
+    keyword_filter = KeywordFilter(include=["Engineering Director", "Software Architect"], exclude=[])
+    assert keyword_filter.matches("Engineering Director, AI Platform")
+    assert keyword_filter.matches("Senior Software  Architect")
+    assert not keyword_filter.matches("Director of Engineering")
+    assert not keyword_filter.matches("Software Engineer, Architecture")
+
+
+def test_rejection_says_why() -> None:
+    assert ROLES.rejection("Senior Security Researcher") is None
+    assert ROLES.rejection("AI Research Intern") == 'keywords: excludes "intern"'
+    assert ROLES.rejection("Backend Engineer") == "keywords: no wanted role in the title"
+    assert KeywordFilter.is_rejection("keywords: no wanted role in the title")
+    assert not KeywordFilter.is_rejection("location: Berlin") and not KeywordFilter.is_rejection(None)
 
 
 def test_search_terms_are_the_entries_as_plain_text() -> None:

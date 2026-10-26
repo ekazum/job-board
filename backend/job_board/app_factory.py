@@ -12,25 +12,24 @@ from fastapi import FastAPI
 from fastapi.routing import APIRoute
 from fastapi.staticfiles import StaticFiles
 
-from job_board.app_config import AppConfig
-from job_board.company_repository import CompanyRepository
-from job_board.company_routes import CompanyRoutes
-from job_board.config_editor import ConfigEditor
-from job_board.database import Database
-from job_board.discover import Discover
-from job_board.location_rule import LocationRule
-from job_board.location_sweep import LocationSweep
-from job_board.paths import CONFIG_PATH
-from job_board.posting_repository import PostingRepository
-from job_board.posting_routes import PostingRoutes
-from job_board.profile_repository import ProfileRepository
-from job_board.profile_routes import ProfileRoutes
-from job_board.rescore_job import RescoreJob
-from job_board.rescore_routes import RescoreRoutes
-from job_board.run_routes import RunRoutes
-from job_board.scan import Scan
-from job_board.scorer import Scorer
-from job_board.settings_routes import SettingsRoutes
+from job_board.api.company_routes import CompanyRoutes
+from job_board.api.posting_routes import PostingRoutes
+from job_board.api.profile_routes import ProfileRoutes
+from job_board.api.rescore_routes import RescoreRoutes
+from job_board.api.run_routes import RunRoutes
+from job_board.api.settings_routes import SettingsRoutes
+from job_board.config.app_config import AppConfig
+from job_board.config.config_editor import ConfigEditor
+from job_board.config.paths import CONFIG_PATH
+from job_board.llm.scorer import Scorer
+from job_board.rules.profile_sweep import ProfileSweep
+from job_board.runs.discover import Discover
+from job_board.runs.rescore_job import RescoreJob
+from job_board.runs.scan import Scan
+from job_board.storage.company_repository import CompanyRepository
+from job_board.storage.database import Database
+from job_board.storage.posting_repository import PostingRepository
+from job_board.storage.profile_repository import ProfileRepository
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ class AppFactory:
     """Assembles the FastAPI app: database lifecycle, API routes, and the built frontend.
 
     config_loader is called once here (for the database path) and again for every discover/scan run,
-    so keyword and company edits in config.yaml take effect without restarting the server.
+    so company and LLM edits in config.yaml take effect without restarting the server.
     """
 
     def __init__(
@@ -65,7 +64,7 @@ class AppFactory:
         self._profiles = ProfileRepository(self._database)
         self._profile_routes = profile_routes or ProfileRoutes(self._profiles, self._database.path.parent / "profile")
         postings = PostingRepository(self._database)
-        rescore_job = RescoreJob(postings, self._new_scorer, self._threshold, LocationSweep(postings, self._location_rule))
+        rescore_job = RescoreJob(postings, self._new_scorer, ProfileSweep(postings, self._profiles.get))
         self._rescore_routes = rescore_routes or RescoreRoutes(rescore_job)
 
     def build(self) -> FastAPI:
@@ -87,14 +86,6 @@ class AppFactory:
     def _new_scorer(self) -> Scorer:
         """A scorer on the provider currently in config.yaml, reading this app's profile."""
         return Scorer.from_settings(self._config_loader().llm, self._profiles, os.environ)
-
-    def _threshold(self) -> int:
-        """llm.threshold as currently in config.yaml."""
-        return self._config_loader().llm.threshold
-
-    def _location_rule(self) -> LocationRule:
-        """The location rule of the profile as currently stored."""
-        return LocationRule.for_profile(self._profiles.get())
 
     def _new_scan(self) -> Scan:
         """A scan run over the current config.yaml on this app's database (it opens its own HTTP client)."""

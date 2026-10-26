@@ -6,7 +6,7 @@ from pathlib import Path
 
 import httpx
 
-from job_board.http_client import HttpClient
+from job_board.utils.http_client import HttpClient
 from job_board.utils.json_values import as_dict, as_list
 
 FIXTURES = Path(__file__).parent / "fixtures"

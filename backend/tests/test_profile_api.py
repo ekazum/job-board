@@ -8,8 +8,8 @@ import docx
 import pytest
 from fastapi.testclient import TestClient
 
-from job_board.app_config import AppConfig
 from job_board.app_factory import AppFactory
+from job_board.config.app_config import AppConfig
 
 
 def _pdf(text: str) -> bytes:
@@ -49,7 +49,7 @@ def _docx(*paragraphs: str) -> bytes:
 
 @pytest.fixture
 def client(tmp_path: Path) -> Iterator[TestClient]:
-    config = AppConfig(db_path=tmp_path / "data" / "job_board.db", include_keywords=(), exclude_keywords=(), companies=())
+    config = AppConfig(db_path=tmp_path / "data" / "job_board.db", companies=())
     with TestClient(AppFactory(lambda: config, tmp_path / "no-dist").build()) as test_client:
         yield test_client
 
@@ -78,6 +78,15 @@ def test_patch_sets_the_location_and_shows_its_country(client: TestClient, locat
     assert (profile["location"], profile["country"], profile["allow_fully_remote"]) == (location.strip(), country, True)
     kept = client.patch("/api/profile", json={"targets": "AI research"}).json()
     assert (kept["location"], kept["allow_fully_remote"], kept["targets"]) == (location.strip(), True, "AI research")
+
+
+def test_patch_sets_the_job_title_keywords(client: TestClient) -> None:
+    include = [" Engineering Director ", "CTO", "cto", "", "AI + engineer"]
+    profile = client.patch("/api/profile", json={"include_keywords": include, "exclude_keywords": ["intern"]}).json()
+    wanted = ["Engineering Director", "CTO", "AI + engineer"]  # trimmed, without blanks or repeats
+    assert (profile["include_keywords"], profile["exclude_keywords"]) == (wanted, ["intern"])
+    kept = client.patch("/api/profile", json={"location": "Israel"}).json()
+    assert (kept["include_keywords"], kept["exclude_keywords"]) == (wanted, ["intern"])
 
 
 @pytest.mark.parametrize(

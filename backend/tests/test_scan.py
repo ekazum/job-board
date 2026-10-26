@@ -1,6 +1,7 @@
 """Scan: role filter on titles, dedup on (source, external_id), per-company errors, Workday and Comeet API boards,
 scoring, and the profile's location rule before it."""
 
+import asyncio
 import json
 from collections.abc import Mapping
 from unittest.mock import MagicMock
@@ -8,26 +9,25 @@ from unittest.mock import MagicMock
 import httpx
 import pytest
 
-from job_board.app_config import AppConfig
 from job_board.boards.board_ref import BoardRef
 from job_board.boards.discovery_finding import DiscoveryFinding
-from job_board.company_repository import CompanyRepository
-from job_board.company_seed import CompanySeed
-from job_board.database import Database
+from job_board.config.app_config import AppConfig
+from job_board.config.company_seed import CompanySeed
 from job_board.enums.outcome import Outcome
 from job_board.enums.platform import Platform
 from job_board.enums.source import Source
 from job_board.enums.status import Status
-from job_board.fit_result import FitResult
-from job_board.llm_settings import LlmSettings
+from job_board.llm.fit_result import FitResult
+from job_board.llm.scorer import Scorer
 from job_board.models.company import Company
 from job_board.models.posting_patch import PostingPatch
 from job_board.models.profile_patch import ProfilePatch
 from job_board.models.run_summary import RunSummary
-from job_board.posting_repository import PostingRepository
-from job_board.profile_repository import ProfileRepository
-from job_board.scan import Scan
-from job_board.scorer import Scorer
+from job_board.runs.scan import Scan
+from job_board.storage.company_repository import CompanyRepository
+from job_board.storage.database import Database
+from job_board.storage.posting_repository import PostingRepository
+from job_board.storage.profile_repository import ProfileRepository
 
 from job_board.utils.json_values import as_str, dicts
 
@@ -60,20 +60,15 @@ def _add(database: Database, name: str, board: BoardRef | None, verified: bool =
     CompanyRepository(database).record_discovery(CompanySeed(name, f"{name.lower()}.com"), finding)
 
 
-def _live_in(database: Database, location: str) -> None:
-    """Set the profile's location, which the scan's location rule reads."""
-    ProfileRepository(database).update(ProfilePatch(location=location))
+def _live_in(database: Database, location: str, include: tuple[str, ...] = ("AI + engineer", "researcher")) -> None:
+    """Set the profile's location and job-title keywords, which the scan reads."""
+    patch = ProfilePatch(location=location, include_keywords=list(include), exclude_keywords=["intern", "product manager"])
+    ProfileRepository(database).update(patch)
 
 
-async def _scan(database: Database, web: FakeWeb, locations: tuple[str, ...] = ()) -> RunSummary:
-    _live_in(database, "Israel")
-    config = AppConfig(
-        db_path=database.path,
-        include_keywords=("AI + engineer", "researcher", "software engineer"),
-        exclude_keywords=("intern", "product manager"),
-        companies=(),
-        locations=locations,
-    )
+async def _scan(database: Database, web: FakeWeb) -> RunSummary:
+    _live_in(database, "Israel", ("AI + engineer", "researcher", "software engineer"))
+    config = AppConfig(db_path=database.path, companies=())
     async with web.client() as http:
         return await Scan(config, database=database, http=http).run()
 
@@ -191,7 +186,7 @@ async def test_workday_board_is_searched_per_role_and_filtered_to_israel(databas
 
     web.route("POST", f"{WORKDAY_ROOT}/jobs", search)
     web.fixture(f"{WORKDAY_ROOT}{path}", "workday_job_israel.json")
-    summary = await _scan(database, web, locations=("Israel",))
+    summary = await _scan(database, web)  # searched in the profile location's country
     assert summary.ok == 1
     stored = PostingRepository(database).list_all()
     assert [(p.source, p.title, p.status) for p in stored] == [(Source.WORKDAY, "Senior System Software Engineer - Signing Platform", Status.NEW)]
@@ -232,19 +227,13 @@ def _scorer_by_title(fits: dict[str, FitResult]) -> MagicMock:
 
 async def _scan_scored(database: Database, web: FakeWeb, scorer: MagicMock, location: str = "Israel") -> RunSummary:
     _live_in(database, location)
-    config = AppConfig(
-        db_path=database.path,
-        include_keywords=("AI + engineer", "researcher"),
-        exclude_keywords=("intern", "product manager"),
-        companies=(),
-        llm=LlmSettings(threshold=6),
-    )
+    config = AppConfig(db_path=database.path, companies=())
     async with web.client() as http:
         return await Scan(config, database=database, http=http, scorer=scorer).run()
 
 
 @pytest.mark.anyio
-async def test_new_jobs_are_scored_and_low_fits_go_to_the_archive(database: Database) -> None:
+async def test_new_jobs_are_scored_and_a_low_fit_stays_in_new(database: Database) -> None:
     _add(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
     scorer = _scorer_by_title(
         {"Senior AI Engineer": FitResult(8, "strong", ("Go",)), "Security Researcher": FitResult(3, "different field")}
@@ -253,8 +242,39 @@ async def test_new_jobs_are_scored_and_low_fits_go_to_the_archive(database: Data
     by_title = {posting.title: posting for posting in PostingRepository(database).list_all()}
     engineer, researcher = by_title["Senior AI Engineer"], by_title["Security Researcher"]
     assert (engineer.status, engineer.fit, engineer.fit_reason, engineer.fit_gaps) == (Status.NEW, 8, "strong", ["Go"])
-    assert (researcher.status, researcher.outcome, researcher.fit) == (Status.CLOSED, Outcome.NOT_RELEVANT, 3)
+    assert (researcher.status, researcher.outcome, researcher.fit) == (Status.NEW, None, 3)  # the score never moves a card
     assert scorer.score.await_count == 2  # only titles that passed the role filter
+
+
+@pytest.mark.anyio
+async def test_each_new_job_is_stored_as_soon_as_it_is_scored(database: Database) -> None:
+    _add(database, "Acme", BoardRef(Platform.GREENHOUSE, "acme"))
+    _live_in(database, "Israel")
+    release = asyncio.Event()
+    scorer = MagicMock(spec=Scorer)
+
+    async def score(*, title: str, company: str, location: str, text: str) -> FitResult:
+        del company, location, text
+        if title == "Security Researcher":
+            await release.wait()
+            return FitResult(3, "different field")
+        return FitResult(8, "strong")
+
+    scorer.score.side_effect = score
+    config = AppConfig(db_path=database.path, companies=())
+    async with _acme_web().client() as http:
+        scan = Scan(config, database=database, http=http, scorer=scorer)
+        run = asyncio.create_task(scan.run())
+        while scan.progress.scored < 1:
+            await asyncio.sleep(0.01)
+        stored_while_scoring = _titles(database)
+        progress = (scan.progress.boards_done, scan.progress.boards, scan.progress.to_score, scan.progress.scored)
+        release.set()
+        await run
+    assert stored_while_scoring == ["Senior AI Engineer"]
+    assert progress == (1, 1, 2, 1)
+    assert scan.progress.scored == 2
+    assert scan.progress.duration_s is not None
 
 
 @pytest.mark.anyio

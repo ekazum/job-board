@@ -5,15 +5,15 @@ from pathlib import Path
 import httpx
 import pytest
 
-from job_board.app_config import AppConfig
 from job_board.boards.google_source import SEARCH_URL as GOOGLE_SEARCH
-from job_board.company_repository import CompanyRepository
-from job_board.company_seed import CompanySeed
-from job_board.database import Database
-from job_board.discover import Discover
+from job_board.config.app_config import AppConfig
+from job_board.config.company_seed import CompanySeed
 from job_board.enums.platform import Platform
 from job_board.models.company import Company
 from job_board.models.run_summary import RunSummary
+from job_board.runs.discover import Discover
+from job_board.storage.company_repository import CompanyRepository
+from job_board.storage.database import Database
 
 from tests.http_fakes import FakeWeb, fixture_text
 
@@ -26,7 +26,7 @@ WORKDAY_ROBOTS = "https://{}.wd{}.myworkdayjobs.com/robots.txt"
 
 
 def _config(database: Database, *seeds: CompanySeed) -> AppConfig:
-    return AppConfig(db_path=database.path, include_keywords=(), exclude_keywords=(), companies=seeds)
+    return AppConfig(db_path=database.path, companies=seeds)
 
 
 async def _run(database: Database, web: FakeWeb, *seeds: CompanySeed) -> RunSummary:
@@ -58,6 +58,17 @@ async def test_redirect_to_board_is_found_from_final_url(database: Database) -> 
     web.json(LEVER_PROBE.format("acme"), [{"id": "x"}])
     await _run(database, web, CompanySeed("Acme", "acme.com"))
     assert (_company(database, "Acme").platform, _company(database, "Acme").verified) == (Platform.LEVER, True)
+
+
+@pytest.mark.anyio
+async def test_board_url_that_redirects_to_the_company_site_is_found_from_the_url_asked_for(database: Database) -> None:
+    web = FakeWeb()
+    web.redirect("https://job-boards.greenhouse.io/playtikaltd", "https://www.playtika.com/careers/")
+    web.page("https://www.playtika.com/careers/", '<script src="/js/greenHouseMain.js"></script>')
+    web.json(GH_API.format("playtikaltd"), {"jobs": []})
+    await _run(database, web, CompanySeed("Playtika", "playtika.com", "https://job-boards.greenhouse.io/playtikaltd"))
+    company = _company(database, "Playtika")
+    assert (company.platform, company.slug, company.verified) == (Platform.GREENHOUSE, "playtikaltd", True)
 
 
 @pytest.mark.anyio

@@ -2,7 +2,7 @@
 
 import pytest
 
-from job_board.location_resolver import LocationResolver
+from job_board.rules.location_resolver import LocationResolver
 
 
 @pytest.fixture(scope="module")

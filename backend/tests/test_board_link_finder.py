@@ -111,3 +111,15 @@ def test_earliest_link_in_the_page_wins(finder: BoardLinkFinder) -> None:
 
 def test_final_url_alone_is_enough(finder: BoardLinkFinder) -> None:
     assert finder.find("https://jobs.lever.co/acme\n<html>No links here</html>") == BoardRef(Platform.LEVER, "acme")
+
+
+def test_finds_a_hibob_careers_site(finder: BoardLinkFinder) -> None:
+    html = '<a href="https://hibob-fa0ad69d0cb34a.careers.hibob.com/jobs/96c4f519">Apply</a>'
+    assert finder.find(html) == BoardRef(Platform.HIBOB, "hibob-fa0ad69d0cb34a")
+
+
+def test_finds_an_eightfold_site_from_its_host_and_pcsx_data(finder: BoardLinkFinder) -> None:
+    data = '<code id="pcsx-data" style="display:none;" data-nosnippet>{&#34;domain&#34;: &#34;amdocs.com&#34;, &#34;configs&#34;: {}}</code>'
+    expected = BoardRef(Platform.EIGHTFOLD, "jobs.amdocs.com", tenant="amdocs.com")
+    assert finder.find(f"https://jobs.amdocs.com/careers\n<html>{data}</html>") == expected
+    assert finder.find(f"<html>{data}</html>") is None  # the API host comes from the page's URL

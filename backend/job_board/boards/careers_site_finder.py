@@ -3,7 +3,7 @@
 from urllib.parse import urlsplit
 
 from job_board.boards.board_ref import BoardRef
-from job_board.company_seed import CompanySeed
+from job_board.config.company_seed import CompanySeed
 from job_board.enums.platform import Platform
 
 # Company domains and careers-site hosts; a host matches itself and its subdomains.

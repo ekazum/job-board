@@ -8,13 +8,13 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from job_board.app_config import AppConfig
+from job_board.api.settings_routes import SettingsRoutes
 from job_board.app_factory import AppFactory
-from job_board.config_editor import ConfigEditor
-from job_board.llm_client import LlmClient
-from job_board.llm_error import LlmError
-from job_board.llm_settings import LlmSettings
-from job_board.settings_routes import SettingsRoutes
+from job_board.config.app_config import AppConfig
+from job_board.config.config_editor import ConfigEditor
+from job_board.config.llm_settings import LlmSettings
+from job_board.llm.llm_client import LlmClient
+from job_board.llm.llm_error import LlmError
 
 CONFIG = """db_path: data/job_board.db
 llm:

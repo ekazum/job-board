@@ -1,67 +1,13 @@
 # Relative paths are resolved against this file's folder.
 db_path: data/job_board.db
 
-# Role filter on the job TITLE: case-insensitive, whole words. A job becomes a card when its title matches an
-# include entry and no exclude entry. "a + b" means the title contains every part, in any order:
-# "AI + engineer" matches "Senior AI Infrastructure Engineer", not "AI Sales Lead".
-# Workday sites are searched once per include entry.
-keywords:
-  include:
-    # research
-    - researcher
-    - research scientist
-    - research engineer
-    # ML and AI engineering
-    - ML + engineer
-    - ML + engineering
-    - machine learning + engineer
-    - AI + engineer
-    - AI + engineering
-    - AI + developer
-    - LLM + engineer
-    - GenAI + engineer
-    - generative AI + engineer
-    - deep learning + engineer
-    - computer vision + engineer
-    - NLP + engineer
-    - MLOps
-    - AI + tech lead
-    - ML + tech lead
-    - AI + algorithm
-    - algorithm + engineer
-    # leadership
-    - CTO
-    - chief technology officer
-    - VP + R&D
-    - vice president + R&D
-    - director + R&D
-    - director + data science
-    # architecture
-    - architect
-  exclude:
-    - intern
-    - student
-    - junior
-    - customer support
-    - android
-    - product manager
-    - account executive
-    - SEO
-    - solutions consultant
-    - full stack
-    - full-stack
-    - fullstack
-    - marketing
-
-# Sites searched per role (Workday, Google, Microsoft, Apple, Amazon, Meta) keep only jobs located in one of these
-# (remove the line to keep every location).
-locations: [Israel]
+# The job-title keywords (wanted and excluded roles) and the location are set in the Profile view.
 
 # LLM used to score postings. Switching provider is this one line (or the Settings view's drop-down).
 llm:
   provider: ollama          # ollama | groq | github | anthropic | openai
   model: qwen2.5:7b         # a provider entry can override it with its own model:
-  threshold: 6
+  threshold: 6              # a fit below this shows as low on the card; the score never moves a card
   max_text_chars: 3000
   request_timeout_s: 120
   max_retries: 1            # one retry on 429/5xx (honouring Retry-After) or a dropped connection
@@ -82,7 +28,7 @@ companies:
   - {name: Wix, domain: wix.com, careers_url: "https://careers.wix.com/"}
   - {name: monday.com, domain: monday.com, careers_url: "https://monday.com/careers"}
   - {name: Check Point, domain: checkpoint.com, careers_url: "https://www.checkpoint.com/careers/"}
-  - {name: CyberArk, domain: cyberark.com, careers_url: "https://www.paloaltonetworks.com/idira"}
+  - {name: CyberArk, domain: cyberark.com, careers_url: "https://jobs.paloaltonetworks.com/"}  # part of Palo Alto Networks: same Workday board, so scanning is off
   - {name: Mobileye, domain: mobileye.com, careers_url: "https://careers.mobileye.com/"}
   - {name: NICE, domain: nice.com, careers_url: "https://www.nice.com/careers"}
   - {name: Amdocs, domain: amdocs.com, careers_url: "https://jobs.amdocs.com/careers"}
@@ -102,7 +48,7 @@ companies:
   - {name: Varonis, domain: varonis.com, careers_url: "https://careers.varonis.com/"}
   - {name: Forter, domain: forter.com, careers_url: "https://www.forter.com/careers/"}
   - {name: Similarweb, domain: similarweb.com, careers_url: "https://www.similarweb.com/corp/careers/"}
-  - {name: Playtika, domain: playtika.com, careers_url: "https://www.playtika.com/careers/"}
+  - {name: Playtika, domain: playtika.com, careers_url: "https://job-boards.greenhouse.io/playtikaltd"}  # its page loads this board from a script
   - {name: AppsFlyer, domain: appsflyer.com, careers_url: "https://careers.appsflyer.com/"}
   - {name: Cellebrite, domain: cellebrite.com}
   - {name: Elbit Systems, domain: elbitsystems.com, careers_url: "https://elbitsystemscareer.com/"}
@@ -117,7 +63,7 @@ companies:
   - {name: Snyk, domain: snyk.io, careers_url: "https://snyk.io/careers/"}
   - {name: Melio, domain: meliopayments.com, careers_url: "https://www.lifeatmelio.com"}
   - {name: Via, domain: ridewithvia.com, careers_url: "https://ridewithvia.com/careers/"}
-  - {name: Coralogix, domain: coralogix.com, careers_url: "https://coralogix.com/careers/"}
+  - {name: Coralogix, domain: coralogix.com, careers_url: "https://www.comeet.com/jobs/coralogix/06.004"}  # its page renders Comeet jobs server-side
   - {name: Claroty, domain: claroty.com, careers_url: "https://claroty.com/careers"}
   - {name: Nvidia, domain: nvidia.com, careers_url: "https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite"}
   - {name: Google, domain: google.com, careers_url: "https://www.google.com/about/careers/applications/"}

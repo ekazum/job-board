@@ -6,7 +6,8 @@
 --   :location   substring of the location, both sides normalized by normalized_location() (PlaceNames.normalize,
 --               registered on the connection by PostingRepository.search)
 --   :archived   1 = only the Archive, 0 = everything else. The Archive holds postings closed as not_relevant by the
---               scorer (they have a fit) or by the location rule (fit_reason 'location: ...', see location_rule.py)
+--               role filter (fit_reason 'keywords: ...', see keyword_filter.py) or by the location rule (fit_reason
+--               'location: ...', see location_rule.py); a posting you closed yourself stays in Closed
 SELECT id, source, external_id, company, title, url, text, status, outcome, note, created_at, fit, location, fit_reason,
        fit_gaps, is_remote, country
 FROM postings
@@ -17,6 +18,6 @@ WHERE (:pattern IS NULL
   AND (:sources IS NULL OR source IN (SELECT value FROM json_each(:sources)))
   AND (:min_fit IS NULL OR fit >= :min_fit OR fit IS NULL)
   AND (:location IS NULL OR instr(normalized_location(location), :location) > 0)
-  AND COALESCE(status = 'closed' AND outcome = 'not_relevant' AND (fit IS NOT NULL OR fit_reason LIKE 'location: %'), 0)
+  AND COALESCE(status = 'closed' AND outcome = 'not_relevant' AND (fit_reason LIKE 'keywords: %' OR fit_reason LIKE 'location: %'), 0)
     = :archived
 ORDER BY created_at DESC, id DESC;

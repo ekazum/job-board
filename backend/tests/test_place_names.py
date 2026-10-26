@@ -2,7 +2,7 @@
 
 import pytest
 
-from job_board.place_names import PlaceNames
+from job_board.rules.place_names import PlaceNames
 
 
 @pytest.mark.parametrize(

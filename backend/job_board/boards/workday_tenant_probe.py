@@ -7,9 +7,9 @@ import re
 from job_board.boards.board_ref import BoardRef
 from job_board.boards.board_source import BoardSource
 from job_board.boards.board_unavailable_error import BoardUnavailableError
-from job_board.company_seed import CompanySeed
+from job_board.config.company_seed import CompanySeed
 from job_board.enums.platform import Platform
-from job_board.http_client import HttpClient
+from job_board.utils.http_client import HttpClient
 
 logger = logging.getLogger(__name__)
 

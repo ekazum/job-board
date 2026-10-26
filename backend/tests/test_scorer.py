@@ -4,14 +4,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from job_board.database import Database
-from job_board.fit_result import FitResult
-from job_board.llm_client import LlmClient
-from job_board.llm_error import LlmError
-from job_board.llm_settings import LlmSettings
+from job_board.config.llm_settings import LlmSettings
+from job_board.llm.fit_result import FitResult
+from job_board.llm.llm_client import LlmClient
+from job_board.llm.llm_error import LlmError
+from job_board.llm.scorer import Scorer
 from job_board.models.profile_patch import ProfilePatch
-from job_board.profile_repository import ProfileRepository
-from job_board.scorer import Scorer
+from job_board.storage.database import Database
+from job_board.storage.profile_repository import ProfileRepository
 from job_board.utils.prompt_files import prompt
 
 GOOD = '{"relevant": true, "fit": 8, "reason": "Strong ML platform match", "gaps": ["Kubernetes", " "]}'

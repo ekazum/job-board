@@ -7,7 +7,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "typecheck": "tsc",
-    "gen:types": "openapi-typescript http://localhost:8000/openapi.json -o src/types.ts --default-non-nullable false"
+    "gen:types": "openapi-typescript http://localhost:8000/openapi.json -o src/api/types.ts --default-non-nullable false"
   },
   "dependencies": {
     "sortablejs": "^1.15.7"

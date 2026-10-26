@@ -7,11 +7,11 @@ from pathlib import Path
 
 import pytest
 
-from job_board.database import LATEST_VERSION, Database
 from job_board.enums.outcome import Outcome
 from job_board.enums.platform import Platform
 from job_board.enums.source import Source
 from job_board.enums.status import Status
+from job_board.storage.database import LATEST_VERSION, Database
 
 from tests.http_fakes import FIXTURES
 
@@ -213,9 +213,9 @@ def test_v1_file_reaches_the_latest_version_with_a_blank_profile(tmp_path: Path)
     Database(path).initialize()
     with closing(sqlite3.connect(path)) as connection:
         columns = {row[1] for row in connection.execute("SELECT * FROM pragma_table_info('postings')")}
-        profile = connection.execute("SELECT cv_text, location, allow_fully_remote FROM profile").fetchall()
+        profile = connection.execute("SELECT cv_text, location, allow_fully_remote, include_keywords FROM profile").fetchall()
     assert {"fit", "location", "fit_reason", "fit_gaps", "is_remote", "country"} <= columns
-    assert profile == [("", "", 0)]  # created by migration 6: no location, so nothing passes until one is set
+    assert profile == [("", "", 0, "[]")]  # created by migration 6: no location, so nothing passes until one is set
 
 
 def test_profile_table_holds_one_row_created_with_the_schema(database: Database) -> None:

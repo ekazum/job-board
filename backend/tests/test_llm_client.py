@@ -6,10 +6,10 @@ import json
 import httpx2
 import pytest
 
-from job_board.llm_client import LlmClient
-from job_board.llm_error import LlmError
-from job_board.llm_provider import LlmProvider
-from job_board.llm_settings import LlmSettings
+from job_board.config.llm_provider import LlmProvider
+from job_board.config.llm_settings import LlmSettings
+from job_board.llm.llm_client import LlmClient
+from job_board.llm.llm_error import LlmError
 from job_board.utils.prompt_files import prompt
 
 OLLAMA_URL = "http://localhost:11434/v1/chat/completions"

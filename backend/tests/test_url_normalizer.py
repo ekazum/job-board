@@ -2,7 +2,7 @@
 
 import pytest
 
-from job_board.url_normalizer import UrlNormalizer
+from job_board.utils.url_normalizer import UrlNormalizer
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
--- Version 5 -> 6: the location rule (job_board/location_rule.py). The profile gets the location postings must be in
+-- Version 5 -> 6: the location rule (job_board/rules/location_rule.py). The profile gets the location postings must be in
 -- and whether fully remote postings pass too; it starts empty, so nothing passes until it is set. The profile row
 -- is created if it was missing. postings get is_remote (the posting says it is remote) and country (the ISO 3166-1
 -- alpha-2 code(s) its location resolves to, "IL" or "DE,IL"; NULL until resolved).

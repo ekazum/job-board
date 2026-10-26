@@ -313,6 +313,11 @@ button:hover:not(:disabled) {
   color: var(--accent);
 }
 
+.badge-fit-low {
+  border-color: var(--border);
+  color: var(--muted);
+}
+
 .column {
   display: flex;
   flex-direction: column;
@@ -708,6 +713,16 @@ button:hover:not(:disabled) {
   font-weight: 600;
 }
 
+.run-summary progress {
+  width: 12rem;
+  margin-left: 0.75rem;
+  vertical-align: middle;
+}
+
+.run-summary progress[hidden] {
+  display: none;
+}
+
 .run-issues {
   margin: 0.5rem 0 0;
   padding-left: 1.1rem;
@@ -976,7 +991,8 @@ button:hover:not(:disabled) {
   color: var(--accent);
 }
 
-.badge-location {
+.badge-location,
+.badge-keywords {
   border-color: var(--outcome-not_relevant);
   color: var(--outcome-not_relevant);
 }
@@ -1099,6 +1115,72 @@ button:hover:not(:disabled) {
 
 .profile-country {
   font-size: 0.85rem;
+}
+
+.profile-keywords {
+  gap: 0.6rem;
+}
+
+.profile-keywords p {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+/* --- job-title keywords -------------------------------------------------------------------------------- */
+
+.keyword-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.keyword-list > label {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.keyword-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.keyword-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.15rem 0.1rem 0.6rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.85rem;
+}
+
+.keyword-remove {
+  padding: 0 0.4rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.keyword-remove:hover {
+  color: var(--danger);
+}
+
+.keyword-empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.keyword-add {
+  display: flex;
+  gap: 0.5rem;
+  max-width: 24rem;
 }
 
 .profile-view progress {

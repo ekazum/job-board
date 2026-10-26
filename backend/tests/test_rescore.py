@@ -1,4 +1,4 @@
-"""Re-score: the location rule first, the background job and its progress, one posting at a time, triage rules,
+"""Re-score: the profile's keywords and location first, the background job and its progress, one posting at a time,
 and the API."""
 
 import asyncio
@@ -9,23 +9,22 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 
-from job_board.app_config import AppConfig
+from job_board.api.rescore_routes import RescoreRoutes
 from job_board.app_factory import AppFactory
-from job_board.database import Database
+from job_board.config.app_config import AppConfig
 from job_board.enums.outcome import Outcome
 from job_board.enums.source import Source
 from job_board.enums.status import Status
-from job_board.fit_result import FitResult
-from job_board.location_rule import LocationRule
-from job_board.location_sweep import LocationSweep
+from job_board.llm.fit_result import FitResult
+from job_board.llm.scorer import Scorer
 from job_board.models.posting import Posting
-from job_board.posting_repository import PostingRepository
-from job_board.rescore_job import RescoreJob
-from job_board.rescore_routes import RescoreRoutes
-from job_board.scorer import Scorer
+from job_board.models.profile import Profile
+from job_board.rules.profile_sweep import ProfileSweep
+from job_board.runs.rescore_job import RescoreJob
+from job_board.storage.database import Database
+from job_board.storage.posting_repository import PostingRepository
 
-THRESHOLD = 6
-ISRAEL = LocationRule("Israel")
+ISRAEL = Profile(location="Israel")
 
 
 def _fake_scorer(fits: dict[str, FitResult]) -> MagicMock:
@@ -40,10 +39,12 @@ def _fake_scorer(fits: dict[str, FitResult]) -> MagicMock:
     return scorer
 
 
-def _add(database: Database, title: str, location: str = "Tel Aviv, Israel", **changes: object) -> Posting:
+def _add(
+    database: Database, title: str, location: str = "Tel Aviv, Israel", source: Source = Source.GREENHOUSE, **changes: object
+) -> Posting:
     postings = PostingRepository(database)
     posting, _ = postings.insert(
-        source=Source.MANUAL, external_id=title, company="Acme", title=title, url=f"https://x/{title}", text="", location=location
+        source=source, external_id=title, company="Acme", title=title, url=f"https://x/{title}", text="", location=location
     )
     if changes:
         saved = postings.save(posting.model_copy(update=changes))
@@ -52,9 +53,9 @@ def _add(database: Database, title: str, location: str = "Tel Aviv, Israel", **c
     return posting
 
 
-def _job(database: Database, scorer: MagicMock, rule: LocationRule = ISRAEL) -> RescoreJob:
+def _job(database: Database, scorer: MagicMock, profile: Profile = ISRAEL) -> RescoreJob:
     postings = PostingRepository(database)
-    return RescoreJob(postings, lambda: scorer, lambda: THRESHOLD, LocationSweep(postings, lambda: rule))
+    return RescoreJob(postings, lambda: scorer, ProfileSweep(postings, lambda: profile))
 
 
 async def _finish(job: RescoreJob) -> None:
@@ -77,7 +78,7 @@ async def test_rescore_all_scores_new_and_unscored_postings_with_progress(databa
     assert (job.status().done, job.status().total, job.status().error) == (3, 3, None)
     by_title = {posting.title: posting for posting in PostingRepository(database).list_all()}
     assert (by_title["Strong"].status, by_title["Strong"].fit) == (Status.NEW, 9)
-    assert (by_title["Weak"].status, by_title["Weak"].outcome, by_title["Weak"].fit_reason) == (Status.CLOSED, Outcome.NOT_RELEVANT, "far off")
+    assert (by_title["Weak"].status, by_title["Weak"].outcome, by_title["Weak"].fit_reason) == (Status.NEW, None, "far off")  # stays put
     assert (by_title["Applied, unscored"].status, by_title["Applied, unscored"].fit) == (Status.APPLIED, 4)  # your progress is kept
     scorer.aclose.assert_awaited_once_with()
 
@@ -110,7 +111,7 @@ async def test_only_one_rescore_at_a_time(database: Database) -> None:
     assert job.start() is True
     await asyncio.sleep(0)
     assert (job.start(), job.status().running) == (False, True)
-    assert job.apply_locations() is None  # not while scores are being written
+    assert job.apply_filters() is None  # not while scores are being written
     release.set()
     while job.running:
         await asyncio.sleep(0.01)
@@ -126,7 +127,7 @@ async def test_rescore_one_and_missing_posting(database: Database) -> None:
     assert await job.rescore_one(999) is None
 
 
-# --- the location rule -----------------------------------------------------------------------------------
+# --- the keywords and the location rule -----------------------------------------------------------------
 
 
 @pytest.mark.anyio
@@ -156,16 +157,34 @@ def test_sweep_moves_new_postings_brings_back_ones_that_now_pass_and_leaves_your
     berlin_new = _add(database, "Berlin, new", location="Berlin")
     berlin_applied = _add(database, "Berlin, applied", location="Berlin", status=Status.APPLIED)
     remote = _add(database, "Remote", location="Remote")
-    rule = LocationRule("Germany")
-    sweep = LocationSweep(postings, lambda: rule)
+    profile = Profile(location="Germany")
+    sweep = ProfileSweep(postings, lambda: profile)
     assert sweep.run().model_dump() == {"archived": 2, "restored": 0}  # Haifa and Remote
-    rule = LocationRule("Israel", allow_fully_remote=True)
+    profile = Profile(location="Israel", allow_fully_remote=True)
     assert sweep.run().model_dump() == {"archived": 1, "restored": 2}  # Berlin, new; Haifa and Remote come back
     by_id = {posting.id: posting for posting in postings.list_all()}
     assert (by_id[haifa.id].status, by_id[haifa.id].fit_reason, by_id[haifa.id].country) == (Status.NEW, None, "IL")
     assert (by_id[remote.id].status, by_id[remote.id].is_remote) == (Status.NEW, True)
     assert by_id[berlin_new.id].fit_reason == "location: Berlin"
     assert by_id[berlin_applied.id].status is Status.APPLIED  # your own move is never undone
+
+
+def test_sweep_applies_the_job_title_keywords_and_leaves_pasted_postings_alone(database: Database) -> None:
+    postings = PostingRepository(database)
+    engineer = _add(database, "Senior AI Engineer")
+    sales = _add(database, "Sales Lead")
+    intern = _add(database, "AI Engineer Intern")
+    pasted = _add(database, "Office Manager", location="", source=Source.MANUAL)
+    profile = Profile(location="Israel", include_keywords=["AI + engineer"], exclude_keywords=["intern"])
+    sweep = ProfileSweep(postings, lambda: profile)
+    assert sweep.run().model_dump() == {"archived": 2, "restored": 0}
+    reasons = {posting.id: (posting.status, posting.fit_reason) for posting in postings.list_all()}
+    assert reasons[engineer.id] == (Status.NEW, None)
+    assert reasons[sales.id] == (Status.CLOSED, "keywords: no wanted role in the title")
+    assert reasons[intern.id] == (Status.CLOSED, 'keywords: excludes "intern"')
+    assert reasons[pasted.id] == (Status.NEW, None)  # you added it yourself
+    profile = Profile(location="Israel", include_keywords=["AI + engineer", "Sales Lead"], exclude_keywords=["intern"])
+    assert sweep.run().model_dump() == {"archived": 0, "restored": 1}  # the sales lead comes back
 
 
 @pytest.mark.anyio
@@ -182,21 +201,21 @@ async def test_rescore_one_outside_the_location_is_archived_unscored(database: D
 
 @pytest.fixture
 def client(tmp_path: Path) -> Iterator[TestClient]:
-    config = AppConfig(db_path=tmp_path / "data" / "job_board.db", include_keywords=(), exclude_keywords=(), companies=())
+    config = AppConfig(db_path=tmp_path / "data" / "job_board.db", companies=())
     database = Database(config.db_path)
     database.initialize()
     _add(database, "Strong")
     _add(database, "Elsewhere", location="Berlin")
     postings = PostingRepository(database)
-    sweep = LocationSweep(postings, lambda: ISRAEL)
-    job = RescoreJob(postings, lambda: _fake_scorer({"Strong": FitResult(9, "great")}), lambda: THRESHOLD, sweep)
+    sweep = ProfileSweep(postings, lambda: ISRAEL)
+    job = RescoreJob(postings, lambda: _fake_scorer({"Strong": FitResult(9, "great")}), sweep)
     app = AppFactory(lambda: config, tmp_path / "no-dist", database=database, rescore_routes=RescoreRoutes(job)).build()
     with TestClient(app) as test_client:
         yield test_client
 
 
 def test_rescore_endpoints(client: TestClient) -> None:
-    assert client.post("/api/rescore/locations").json() == {"archived": 1, "restored": 0}
+    assert client.post("/api/rescore/filters").json() == {"archived": 1, "restored": 0}
     started = client.post("/api/rescore")
     assert (started.status_code, started.json()["total"]) == (202, 1)
     status = client.get("/api/rescore/status").json()

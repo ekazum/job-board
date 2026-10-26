@@ -2,8 +2,8 @@
 
 import pytest
 
-from job_board.location_resolver import LocationResolver
-from job_board.location_rule import LocationRule
+from job_board.rules.location_resolver import LocationResolver
+from job_board.rules.location_rule import LocationRule
 
 ISRAEL = LocationRule("Israel")
 ISRAEL_OR_REMOTE = LocationRule("Israel", allow_fully_remote=True)
@@ -80,3 +80,8 @@ def test_is_remote(location: str, title: str, text: str, remote: bool) -> None:
 def test_rejections_are_recognised_by_their_reason() -> None:
     assert LocationRule.is_rejection("location: Berlin")
     assert not LocationRule.is_rejection("far off") and not LocationRule.is_rejection(None)
+
+
+def test_searched_sites_look_in_the_profile_locations_country() -> None:
+    assert (ISRAEL.search_places, LocationRule("Haifa").search_places) == (("Israel",), ("Israel",))
+    assert (LocationRule("EMEA").search_places, LocationRule("").search_places) == (("EMEA",), ())

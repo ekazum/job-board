@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from job_board.database import Database
+from job_board.storage.database import Database
 
 
 @pytest.fixture

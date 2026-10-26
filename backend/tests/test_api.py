@@ -1,6 +1,7 @@
 """HTTP API end to end against a temporary database."""
 
 import asyncio
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -9,15 +10,17 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from job_board.app_config import AppConfig
+from job_board.api.run_routes import RunRoutes
 from job_board.app_factory import AppFactory
-from job_board.discover import Discover
+from job_board.config.app_config import AppConfig
 from job_board.models.run_summary import RunSummary
-from job_board.run_routes import RunRoutes
-from job_board.scan import Scan
+from job_board.models.scan_progress import ScanProgress
+from job_board.runs.discover import Discover
+from job_board.runs.scan import Scan
 
 DISCOVERED = RunSummary(ok=48, failed=2, duration_s=31.5)
 SCANNED = RunSummary(ok=23, failed=0, duration_s=111.8)
+SCAN_PROGRESS = ScanProgress(boards_done=23, boards=23, scored=3, to_score=3, duration_s=111.8)
 
 PASTE = {
     "company": "Acme",
@@ -28,7 +31,7 @@ PASTE = {
 
 
 def _client(tmp_path: Path, frontend_dist: Path, run_routes: RunRoutes | None = None) -> TestClient:
-    config = AppConfig(db_path=tmp_path / "data" / "job_board.db", include_keywords=(), exclude_keywords=(), companies=())
+    config = AppConfig(db_path=tmp_path / "data" / "job_board.db", companies=())
     return TestClient(AppFactory(lambda: config, frontend_dist, run_routes=run_routes).build())
 
 
@@ -207,16 +210,31 @@ def _fake_runs() -> tuple[MagicMock, MagicMock]:
     discover.run.return_value = DISCOVERED
     scan = MagicMock(spec=Scan)
     scan.run.return_value = SCANNED
+    scan.progress = SCAN_PROGRESS
     return discover, scan
 
 
-def test_discover_and_scan_return_ok_failed_and_duration(tmp_path: Path) -> None:
+def _scan_finished(client: TestClient) -> dict[str, object]:
+    """The scan status once the background scan has ended."""
+    for _ in range(200):
+        status = client.get("/api/scan/status").json()
+        if not status["running"]:
+            return status
+        time.sleep(0.01)
+    raise AssertionError("the scan did not end")
+
+
+def test_discover_returns_ok_failed_and_duration_and_scan_runs_in_the_background(tmp_path: Path) -> None:
     discover, scan = _fake_runs()
     with _client(tmp_path, tmp_path / "no-dist", RunRoutes(lambda: discover, lambda: scan)) as test_client:
+        before = test_client.get("/api/scan/status").json()
         discovered = test_client.post("/api/discover")
-        scanned = test_client.post("/api/scan")
+        started = test_client.post("/api/scan")
+        finished = _scan_finished(test_client)
+    assert (before["running"], before["boards"], before["error"]) == (False, 0, None)
     assert (discovered.status_code, discovered.json()) == (200, {"ok": 48, "failed": 2, "duration_s": 31.5})
-    assert (scanned.status_code, scanned.json()) == (200, {"ok": 23, "failed": 0, "duration_s": 111.8})
+    assert (started.status_code, started.json()["running"]) == (202, True)
+    assert finished == {**SCAN_PROGRESS.model_dump(), "running": False, "error": None}
     discover.run.assert_awaited_once_with()
     scan.run.assert_awaited_once_with()
 
@@ -226,8 +244,19 @@ def test_each_run_gets_a_fresh_orchestrator(tmp_path: Path) -> None:
     factory = MagicMock(return_value=scan)
     with _client(tmp_path, tmp_path / "no-dist", RunRoutes(lambda: discover, factory)) as test_client:
         test_client.post("/api/scan")
+        _scan_finished(test_client)
         test_client.post("/api/scan")
+        _scan_finished(test_client)
     assert factory.call_count == 2
+
+
+def test_a_scan_that_fails_reports_why(tmp_path: Path) -> None:
+    discover, scan = _fake_runs()
+    scan.run.side_effect = RuntimeError("database is locked")
+    with _client(tmp_path, tmp_path / "no-dist", RunRoutes(lambda: discover, lambda: scan)) as test_client:
+        test_client.post("/api/scan")
+        finished = _scan_finished(test_client)
+    assert finished["error"] == "RuntimeError: database is locked"
 
 
 @pytest.mark.anyio
@@ -241,7 +270,7 @@ async def test_second_run_while_one_is_in_progress_is_409(tmp_path: Path) -> Non
 
     discover, scan = _fake_runs()
     discover.run.side_effect = slow_discover
-    config = AppConfig(db_path=tmp_path / "x.db", include_keywords=(), exclude_keywords=(), companies=())
+    config = AppConfig(db_path=tmp_path / "x.db", companies=())
     app = AppFactory(lambda: config, tmp_path / "no-dist", run_routes=RunRoutes(lambda: discover, lambda: scan)).build()
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         first = asyncio.create_task(client.post("/api/discover"))
@@ -250,9 +279,34 @@ async def test_second_run_while_one_is_in_progress_is_409(tmp_path: Path) -> Non
         release.set()
         finished = await first
         after = await client.post("/api/scan")
-    assert (busy.status_code, finished.status_code, after.status_code) == (409, 200, 200)
+        while (await client.get("/api/scan/status")).json()["running"]:
+            await asyncio.sleep(0.01)
+    assert (busy.status_code, finished.status_code, after.status_code) == (409, 200, 202)
     assert "already in progress" in busy.json()["detail"]
     scan.run.assert_awaited_once_with()
+
+
+@pytest.mark.anyio
+async def test_nothing_else_runs_while_a_scan_is_in_progress(tmp_path: Path) -> None:
+    release = asyncio.Event()
+
+    async def slow_scan() -> RunSummary:
+        await release.wait()
+        return SCANNED
+
+    discover, scan = _fake_runs()
+    scan.run.side_effect = slow_scan
+    config = AppConfig(db_path=tmp_path / "x.db", companies=())
+    app = AppFactory(lambda: config, tmp_path / "no-dist", run_routes=RunRoutes(lambda: discover, lambda: scan)).build()
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
+        started = await client.post("/api/scan")
+        busy = [(await client.post("/api/scan")).status_code, (await client.post("/api/discover")).status_code]
+        running = (await client.get("/api/scan/status")).json()["running"]
+        release.set()
+        while (await client.get("/api/scan/status")).json()["running"]:
+            await asyncio.sleep(0.01)
+    assert (started.status_code, busy, running) == (202, [409, 409], True)
+    discover.run.assert_not_awaited()
 
 
 def test_openapi_uses_method_names_as_operation_ids(client: TestClient) -> None:
@@ -266,12 +320,13 @@ def test_openapi_uses_method_names_as_operation_ids(client: TestClient) -> None:
         "posting_facets",
         "create_posting",
         "patch_posting",
-        "purge_location_rejects",
+        "purge_rejects",
         "list_companies",
         "create_company",
         "patch_company",
         "run_discover",
         "run_scan",
+        "scan_status",
         "get_llm_settings",
         "set_llm_provider",
         "test_llm",
@@ -280,6 +335,6 @@ def test_openapi_uses_method_names_as_operation_ids(client: TestClient) -> None:
         "patch_profile",
         "start_rescore",
         "rescore_status",
-        "apply_locations",
+        "apply_filters",
         "rescore_posting",
     }

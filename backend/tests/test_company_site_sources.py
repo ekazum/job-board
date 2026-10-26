@@ -1,4 +1,5 @@
-"""Single-company careers sites (Google, Microsoft, Apple, Amazon, Meta) against recorded answers from 2026-10-17."""
+"""Single-company careers sites (Google, Microsoft, Apple, Amazon, Meta) against recorded answers from 2026-10-17, and
+any other Eightfold site."""
 
 import json
 from urllib.parse import parse_qs
@@ -6,19 +7,20 @@ from urllib.parse import parse_qs
 import httpx
 import pytest
 
-from job_board.boards.amazon_source import SEARCH_URL as AMAZON_SEARCH
 from job_board.boards.amazon_source import AmazonSource
+from job_board.boards.amazon_source import SEARCH_URL as AMAZON_SEARCH
 from job_board.boards.apple_source import API_ROOT as APPLE_API
 from job_board.boards.apple_source import AppleSource
 from job_board.boards.board_ref import BoardRef
 from job_board.boards.board_unavailable_error import BoardUnavailableError
-from job_board.boards.google_source import SEARCH_URL as GOOGLE_SEARCH
+from job_board.boards.eightfold_source import EightfoldSource
 from job_board.boards.google_source import GoogleSource
+from job_board.boards.google_source import SEARCH_URL as GOOGLE_SEARCH
 from job_board.boards.meta_source import GRAPHQL_URL, OFFICES_QUERY, SEARCH_PAGE, SEARCH_QUERY, MetaSource
 from job_board.boards.microsoft_source import API_ROOT as MICROSOFT_API
 from job_board.boards.microsoft_source import MicrosoftSource
 from job_board.enums.platform import Platform
-from job_board.keyword_filter import KeywordFilter
+from job_board.rules.keyword_filter import KeywordFilter
 from job_board.utils.json_values import as_dict
 
 from tests.http_fakes import FakeWeb, fixture_dict, fixture_json, fixture_text
@@ -151,6 +153,36 @@ async def test_microsoft_pages_with_start() -> None:
     async with web.client() as http:
         assert await MicrosoftSource(http, KeywordFilter(["researcher"], [])).fetch_jobs(MICROSOFT) == []
     assert starts == ["0", "10", "20"]
+
+
+@pytest.mark.anyio
+async def test_eightfold_site_is_searched_on_its_own_host_with_its_domain() -> None:
+    searched: list[dict[str, str]] = []
+    positions = [
+        {"id": 563431014999509, "name": "Head of Technology", "locations": ["Israel- RAANANA (Amdocs Site)"]},
+        {"id": 2, "name": "Head of Technology", "locations": ["Limassol, Cyprus"]},
+    ]
+
+    def search(request: httpx.Request) -> httpx.Response:
+        searched.append(dict(request.url.params))
+        return httpx.Response(200, json={"data": {"positions": positions, "count": 2}}, request=request)
+
+    web = FakeWeb()
+    web.route_any_query("GET", "https://jobs.amdocs.com/api/pcsx/search", search)
+    details = "https://jobs.amdocs.com/api/pcsx/position_details?position_id=563431014999509&domain=amdocs.com&hl=en"
+    web.json(details, {"data": {"jobDescription": "<p>Lead the architecture.</p>"}})
+    board = BoardRef(Platform.EIGHTFOLD, "jobs.amdocs.com", tenant="amdocs.com")
+    async with web.client() as http:
+        jobs = await EightfoldSource(http, KeywordFilter(["head of technology"], []), ["Israel"]).fetch_jobs(board)
+    assert searched == [{"domain": "amdocs.com", "query": "head of technology", "location": "Israel", "start": "0"}]
+    assert jobs is not None and [(job.external_id, job.url, job.location, job.text) for job in jobs] == [
+        (
+            "563431014999509",
+            "https://jobs.amdocs.com/careers/job/563431014999509",
+            "Israel- RAANANA (Amdocs Site)",
+            "Lead the architecture.",
+        )
+    ]
 
 
 # --- Apple ------------------------------------------------------------------------------------------------

@@ -11,6 +11,8 @@ class Source(StrEnum):
     ASHBY = "ashby"
     COMEET = "comeet"
     WORKDAY = "workday"
+    EIGHTFOLD = "eightfold"
+    HIBOB = "hibob"
     GOOGLE = "google"
     MICROSOFT = "microsoft"
     APPLE = "apple"

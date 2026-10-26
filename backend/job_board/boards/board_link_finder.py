@@ -2,6 +2,7 @@
 
 import re
 from collections.abc import Callable, Sequence
+from urllib.parse import urlsplit
 
 from job_board.boards.board_ref import BoardRef
 from job_board.enums.platform import Platform
@@ -9,7 +10,7 @@ from job_board.enums.platform import Platform
 COMEET_UID = r"[0-9A-Za-z]{2}\.[0-9A-Za-z]{3}"
 # Path segments and subdomains that look like slugs but are not boards.
 RESERVED_SLUGS = frozenset({"embed", "www", "api", "app", "v0", "v1", "static", "assets", "careers-api", "jobs", "help"})
-CASE_INSENSITIVE_PLATFORMS = frozenset({Platform.GREENHOUSE, Platform.LEVER})
+CASE_INSENSITIVE_PLATFORMS = frozenset({Platform.GREENHOUSE, Platform.LEVER, Platform.HIBOB})
 # The Comeet widget's token and company name are read only this close to its company uid.
 WIDGET_WINDOW = 2000
 
@@ -69,20 +70,25 @@ DEFAULT_RULES: tuple[tuple[re.Pattern[str], BoardBuilder], ...] = (
     (_pattern(rf"comeet\.com?/jobs/([\w-]+)/({COMEET_UID})"), _comeet_hosted),
     (_pattern(r"(?<![\w.-])([\w-]+)\.comeet\.co(?![\w.-])"), _slug_board(Platform.COMEET)),
     (_pattern(r"([\w-]+)\.(wd\d+)\.myworkdayjobs\.com/(?:[a-z]{2}-[a-z]{2}/)?(?!wday/)([\w-]+)"), _workday),
+    (_pattern(r"(?<![\w.-])([\w-]+)\.careers\.hibob\.com(?![\w-])"), _slug_board(Platform.HIBOB)),
 )
 # The Comeet careers widget: data-company-uid="E6.001" data-token="..." attributes, or COMEET.init({"token": "...",
 # "company-uid": "E6.001", "company-name": "AI21"}) in a script.
 WIDGET_UID = _pattern(rf"(?:data-company-uid|[\"']company-uid[\"'])\s*[=:]\s*[\"']({COMEET_UID})[\"']")
 WIDGET_TOKEN = _pattern(r"(?:data-token|[\"']token[\"'])\s*[=:]\s*[\"']([0-9A-Za-z]{16,})[\"']")
 WIDGET_NAME = _pattern(r"(?:data-company-name|[\"']company-name[\"'])\s*[=:]\s*[\"']([^\"']+)[\"']")
+# An Eightfold careers site names the domain its API asks for in <code id="pcsx-data">{"domain": "amdocs.com", ...}
+# (quotes HTML-escaped); the API is on the page's own host.
+QUOTE = r"(?:&#34;|&quot;|\")"
+EIGHTFOLD_DATA = _pattern(rf"id=[\"']pcsx-data[\"'][^>]*>\s*\{{\s*{QUOTE}domain{QUOTE}\s*:\s*{QUOTE}([\w.-]+){QUOTE}")
 
 
 class BoardLinkFinder:
     """Returns the board referenced earliest in a page, or None.
 
-    Pass the page's final URL along with its HTML: a /careers path that redirects to jobs.lever.co/acme is found
-    from the URL alone. JSON-escaped slashes (https:\\/\\/jobs.lever.co\\/acme, common in framework data blobs)
-    are unescaped first.
+    Pass the page's final URL along with its HTML (the URL first, on its own line): a /careers path that redirects
+    to jobs.lever.co/acme is found from the URL alone, and an Eightfold site from its host. JSON-escaped slashes
+    (https:\\/\\/jobs.lever.co\\/acme, common in framework data blobs) are unescaped first.
     """
 
     def __init__(self, rules: Sequence[tuple[re.Pattern[str], BoardBuilder]] = DEFAULT_RULES) -> None:
@@ -96,9 +102,9 @@ class BoardLinkFinder:
             found = self._first(pattern, build, unescaped)
             if found is not None:
                 candidates.append(found)
-        widget = self._comeet_widget(unescaped)
-        if widget is not None:
-            candidates.append(widget)
+        for special in (self._comeet_widget(unescaped), self._eightfold(unescaped)):
+            if special is not None:
+                candidates.append(special)
         if not candidates:
             return None
         _, board = min(candidates, key=lambda candidate: candidate[0])
@@ -125,3 +131,12 @@ class BoardLinkFinder:
         slug = f"{name.group(1).strip()}/{uid.group(1)}" if name else uid.group(1)
         board = BoardRef(Platform.COMEET, slug, company_uid=uid.group(1), token=token.group(1) if token else None)
         return uid.start(), board
+
+    @staticmethod
+    def _eightfold(page: str) -> tuple[int, BoardRef] | None:
+        """An Eightfold site: the page's host (from the URL on its first line) and the domain its pcsx-data names."""
+        data = EIGHTFOLD_DATA.search(page)
+        host = urlsplit(page.split("\n", 1)[0].strip()).hostname
+        if data is None or not host:
+            return None
+        return data.start(), BoardRef(Platform.EIGHTFOLD, host.lower(), tenant=data.group(1).lower())
