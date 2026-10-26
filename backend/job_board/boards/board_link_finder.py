@@ -97,11 +97,7 @@ class BoardLinkFinder:
     def find(self, page: str) -> BoardRef | None:
         """The first board reference by position in the page."""
         unescaped = page.replace("\\/", "/")
-        candidates: list[tuple[int, BoardRef]] = []
-        for pattern, build in self._rules:
-            found = self._first(pattern, build, unescaped)
-            if found is not None:
-                candidates.append(found)
+        candidates = [(match.start(), board) for match, board in self._links(unescaped)]
         for special in (self._comeet_widget(unescaped), self._eightfold(unescaped)):
             if special is not None:
                 candidates.append(special)
@@ -110,13 +106,27 @@ class BoardLinkFinder:
         _, board = min(candidates, key=lambda candidate: candidate[0])
         return board
 
+    def find_in_url(self, url: str) -> tuple[BoardRef, str] | None:
+        """The board a link names and the link cut after it: a job's link
+        "https://jobs.lever.co/acme/1f2e?lever-source=x" gives lever/acme and "https://jobs.lever.co/acme"."""
+        links = self._links(url)
+        if not links:
+            return None
+        match, board = min(links, key=lambda link: link[0].start())
+        return board, url[: match.end()]
+
+    def _links(self, page: str) -> list[tuple[re.Match[str], BoardRef]]:
+        """The first board link of each rule."""
+        links = (self._first(pattern, build, page) for pattern, build in self._rules)
+        return [link for link in links if link is not None]
+
     @staticmethod
-    def _first(pattern: re.Pattern[str], build: BoardBuilder, page: str) -> tuple[int, BoardRef] | None:
+    def _first(pattern: re.Pattern[str], build: BoardBuilder, page: str) -> tuple[re.Match[str], BoardRef] | None:
         """The first match of one rule that builds a board (reserved words are skipped)."""
         for match in pattern.finditer(page):
             board = build(match)
             if board is not None:
-                return match.start(), board
+                return match, board
         return None
 
     @staticmethod

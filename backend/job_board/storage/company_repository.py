@@ -7,6 +7,7 @@ from job_board.boards.discovery_finding import DiscoveryFinding
 from job_board.boards.scan_target import ScanTarget
 from job_board.config.company_seed import CompanySeed
 from job_board.enums.platform import Platform
+from job_board.enums.source import Source
 from job_board.models.company import Company
 from job_board.storage.database import Database
 from job_board.utils.sql_files import sql
@@ -49,6 +50,10 @@ class CompanyRepository:
         """Set or clear the page Discover fetches first; None when the company does not exist."""
         return self._update(sql("companies/set_careers_url.sql"), {"id": company_id, "careers_url": careers_url})
 
+    def set_domain(self, company_id: int, domain: str | None) -> Company | None:
+        """Set or clear the domain Discover starts from; None when the company does not exist."""
+        return self._update(sql("companies/set_domain.sql"), {"id": company_id, "domain": domain})
+
     def record_discovery(self, seed: CompanySeed, finding: DiscoveryFinding) -> None:
         """Upsert a company by name (any case) with what discovery found and clear last_error; enabled is kept."""
         board = finding.board
@@ -80,10 +85,16 @@ class CompanyRepository:
             connection.execute(sql("companies/set_last_error.sql"), {"name": name, "last_error": error})
 
     def list_seeds(self) -> list[CompanySeed]:
-        """Stored companies that have a domain, as discovery input, alphabetically."""
+        """Stored companies that have a domain or a careers URL, as discovery input, alphabetically."""
         with self._database.transaction() as connection:
             rows = connection.execute(sql("companies/list_seeds.sql")).fetchall()
         return [CompanySeed(name=row["name"], domain=row["domain"], careers_url=row["careers_url"]) for row in rows]
+
+    def list_posting_companies(self) -> list[tuple[str, str]]:
+        """(company, url) of each pasted posting whose company is not in the list, newest first."""
+        with self._database.transaction() as connection:
+            rows = connection.execute(sql("companies/list_posting_companies.sql"), {"source": Source.MANUAL}).fetchall()
+        return [(row["company"], row["url"]) for row in rows]
 
     def list_scannable(self) -> list[ScanTarget]:
         """Companies that are verified and enabled and have a board, alphabetically."""

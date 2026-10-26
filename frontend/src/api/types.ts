@@ -133,7 +133,8 @@ export interface paths {
         head?: never;
         /**
          * Patch Company
-         * @description Enable or disable scanning, and/or set or clear the careers page Discover fetches first.
+         * @description Enable or disable scanning, and/or set or clear the careers page Discover fetches first or the domain it
+         *     starts from.
          */
         patch: operations["patch_company"];
         trace?: never;
@@ -149,7 +150,7 @@ export interface paths {
         put?: never;
         /**
          * Run Discover
-         * @description Discover the careers platform of every company.
+         * @description Add the companies of pasted postings to the list, then discover the careers platform of every company.
          */
         post: operations["run_discover"];
         delete?: never;
@@ -526,13 +527,30 @@ export interface components {
         /**
          * CompanyPatch
          * @description Fields a client may change on a company; fields left out of the request stay as they are.
-         *     careers_url set to null or "" clears it.
+         *     careers_url or domain set to null or "" clears it. The domain is stored bare ("https://www.Acme.com" -> "acme.com")
+         *     and Discover starts from it.
          */
         CompanyPatch: {
             /** Enabled */
             enabled?: boolean | null;
             /** Careers Url */
             careers_url?: string | null;
+            /** Domain */
+            domain?: string | null;
+        };
+        /**
+         * DiscoverSummary
+         * @description A run's counts, plus added: the companies of pasted postings that this run put on the list.
+         */
+        DiscoverSummary: {
+            /** Ok */
+            ok: number;
+            /** Failed */
+            failed: number;
+            /** Duration S */
+            duration_s: number;
+            /** Added */
+            added: number;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -783,18 +801,6 @@ export interface components {
             total: number;
             /** Error */
             error?: string | null;
-        };
-        /**
-         * RunSummary
-         * @description ok: companies processed; failed: companies whose error was saved to companies.last_error; duration_s: wall time.
-         */
-        RunSummary: {
-            /** Ok */
-            ok: number;
-            /** Failed */
-            failed: number;
-            /** Duration S */
-            duration_s: number;
         };
         /**
          * ScanStatus
@@ -1202,7 +1208,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RunSummary"];
+                    "application/json": components["schemas"]["DiscoverSummary"];
                 };
             };
             /** @description Another discover or scan run is in progress */

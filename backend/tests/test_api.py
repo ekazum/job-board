@@ -13,12 +13,13 @@ from fastapi.testclient import TestClient
 from job_board.api.run_routes import RunRoutes
 from job_board.app_factory import AppFactory
 from job_board.config.app_config import AppConfig
+from job_board.models.discover_summary import DiscoverSummary
 from job_board.models.run_summary import RunSummary
 from job_board.models.scan_progress import ScanProgress
 from job_board.runs.discover import Discover
 from job_board.runs.scan import Scan
 
-DISCOVERED = RunSummary(ok=48, failed=2, duration_s=31.5)
+DISCOVERED = DiscoverSummary(ok=48, failed=2, duration_s=31.5, added=3)
 SCANNED = RunSummary(ok=23, failed=0, duration_s=111.8)
 SCAN_PROGRESS = ScanProgress(boards_done=23, boards=23, scored=3, to_score=3, duration_s=111.8)
 
@@ -232,7 +233,7 @@ def test_discover_returns_ok_failed_and_duration_and_scan_runs_in_the_background
         started = test_client.post("/api/scan")
         finished = _scan_finished(test_client)
     assert (before["running"], before["boards"], before["error"]) == (False, 0, None)
-    assert (discovered.status_code, discovered.json()) == (200, {"ok": 48, "failed": 2, "duration_s": 31.5})
+    assert (discovered.status_code, discovered.json()) == (200, {"ok": 48, "failed": 2, "duration_s": 31.5, "added": 3})
     assert (started.status_code, started.json()["running"]) == (202, True)
     assert finished == {**SCAN_PROGRESS.model_dump(), "running": False, "error": None}
     discover.run.assert_awaited_once_with()
@@ -263,7 +264,7 @@ def test_a_scan_that_fails_reports_why(tmp_path: Path) -> None:
 async def test_second_run_while_one_is_in_progress_is_409(tmp_path: Path) -> None:
     started, release = asyncio.Event(), asyncio.Event()
 
-    async def slow_discover() -> RunSummary:
+    async def slow_discover() -> DiscoverSummary:
         started.set()
         await release.wait()
         return DISCOVERED

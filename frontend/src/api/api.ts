@@ -7,6 +7,7 @@ import type {
   Company,
   CompanyCreate,
   CompanyPatch,
+  DiscoverSummary,
   LlmSettingsView,
   LlmTestResult,
   Posting,
@@ -18,7 +19,6 @@ import type {
   ProfilePatch,
   PurgeResult,
   RescoreStatus,
-  RunSummary,
   ScanStatus,
   SweepResult,
 } from "./domain";
@@ -77,9 +77,10 @@ export async function patchCompany(id: number, patch: CompanyPatch): Promise<Com
   return (await request<Company>("PATCH", `/api/companies/${id}`, patch)).data;
 }
 
-/** Answers when the run is done (it can take minutes); 409 when another run is in progress. */
-export async function runDiscover(): Promise<RunSummary> {
-  return (await request<RunSummary>("POST", "/api/discover")).data;
+/** Adds the pasted postings' companies, then discovers; answers when the run is done (it can take minutes); 409 when
+ * another run is in progress. */
+export async function runDiscover(): Promise<DiscoverSummary> {
+  return (await request<DiscoverSummary>("POST", "/api/discover")).data;
 }
 
 /** Starts a scan in the background (202); 409 when a discover or scan run is in progress. */

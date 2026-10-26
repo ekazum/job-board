@@ -46,12 +46,15 @@ class CompanyRoutes:
         return company
 
     def patch_company(self, company_id: int, body: CompanyPatch) -> Company:
-        """Enable or disable scanning, and/or set or clear the careers page Discover fetches first."""
+        """Enable or disable scanning, and/or set or clear the careers page Discover fetches first or the domain it
+        starts from."""
         company = self._repository.get(company_id)
         if company is not None and body.enabled is not None:
             company = self._repository.set_enabled(company_id, body.enabled)
         if company is not None and "careers_url" in body.model_fields_set:
             company = self._repository.set_careers_url(company_id, body.careers_url)
+        if company is not None and "domain" in body.model_fields_set:
+            company = self._repository.set_domain(company_id, body.domain)
         if company is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, f"company {company_id} not found")
         return company

@@ -772,7 +772,23 @@ button:hover:not(:disabled) {
 }
 
 .company-domain {
+  display: block;
+  width: 11rem;
+  max-width: 100%;
+  margin: 0.15rem 0 0 calc(-0.35rem - 1px); /* the text lines up with the name above */
+  padding: 0.1rem 0.35rem;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
   font-size: 0.8rem;
+}
+
+.company-domain:hover,
+.company-domain:focus,
+.company-domain:placeholder-shown {
+  background: var(--bg);
+  border-color: var(--border);
 }
 
 .companies-table code {

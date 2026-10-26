@@ -11,7 +11,7 @@ Collect job postings in one place and track where each application stands.
   (Greenhouse, Lever, Ashby, Comeet, Workday), or its own careers site (Google, Microsoft, Apple, Amazon, Meta);
   `scan` reads those boards, keeps titles matching your profile's job-title keywords and drops the ones outside its
   location (not stored, no LLM call), has the LLM score the rest against your profile, and adds each as a `new` card
-  with its score. It only covers companies you've named.
+  with its score. It covers the companies you've named, and those of the jobs you paste (Discover adds them).
 
 Duplicates are ignored on `(source, external_id)`: a rescan never re-adds a posting or resets its status,
 and pasting the same link twice is a no-op (`source = manual`, `external_id` = normalized URL).
@@ -70,7 +70,15 @@ python -m job_board.runs.discover   # or POST /api/discover
 python -m job_board.runs.scan       # or POST /api/scan (in the background; GET /api/scan/status)
 ```
 
-- **discover** first recognizes Google, Microsoft, Apple, Amazon and Meta by domain or careers URL: each has its own
+- **discover** starts by adding the companies of postings you pasted that are not in the list yet, so the list grows
+  with every company you paste a job from; they are scanned like the rest. A posting's link gives the company's board
+  or site only when it is the company's own (`boards/posting_company_finder.py`): a Comeet, Greenhouse, Lever, Ashby,
+  Workday or HiBob link whose board name matches the company name becomes its careers URL, cut to the board
+  (`https://www.comeet.com/jobs/acme/A1.234`); a link to a site whose domain matches the name gives the domain (and the
+  site as careers URL when it is a subdomain, `https://jobs.acme.co.il/`). A LinkedIn or recruiter link gives
+  nothing: the company is listed with **Add its domain or careers URL**, and you type either in its row. A company
+  whose domain or board is already listed under another name is not added.
+- Then it recognizes Google, Microsoft, Apple, Amazon and Meta by domain or careers URL: each has its own
   careers site, verified with one search. For everyone else it fetches `careers_url` (config, else the one saved in
   the Companies view) together with `https://<domain>/careers`, `/jobs`, `/join-us`, and takes the board linked from
   the first of them that has one: Greenhouse, Lever, Ashby, Comeet (hosted page, `careers-api` URL, or the careers
@@ -84,6 +92,8 @@ python -m job_board.runs.scan       # or POST /api/scan (in the background; GET 
   `jobs.amdocs.com` with domain `amdocs.com`. A link to a **HiBob** careers site (`<company>.careers.hibob.com`) is
   read through its `api/job-ad` (every job at once). Nothing found → `platform = none`; a board the page loads from a
   script is missed, so put the board's own URL in `careers_url` (e.g. `https://job-boards.greenhouse.io/playtikaltd`).
+  A `careers_url` that is a board's link names that board even when its page does not load (the API check decides).
+  A company with only a careers URL (no domain) is discovered from that page alone.
 - **scan** reads every verified + enabled company's board and adds jobs whose **title** matches a wanted role and
   no excluded word (the profile's [job titles](#job-titles)) as `new`. Postings already stored are skipped before scoring (and on insert, `ON CONFLICT DO NOTHING`),
   so a rescan never duplicates a card, resets its status, or spends LLM calls on known jobs; it only fills in the
@@ -267,8 +277,8 @@ OpenAI-compatible endpoint (`ChatOpenAI`) with its key from `.env`, so switching
 | DELETE | `/api/postings/rejects` | Purge rejects: deletes the postings the keywords or the location rule archived → `{deleted}` |
 | GET | `/api/companies` | alphabetical |
 | POST | `/api/companies` | `name, domain?, careers_url?` → 201 created, 200 if the name exists (any case); with a domain it is included in Discover |
-| PATCH | `/api/companies/{id}` | `enabled?, careers_url?` (null clears) |
-| POST | `/api/discover` | → `{ok, failed, duration_s}` |
+| PATCH | `/api/companies/{id}` | `enabled?, careers_url?, domain?` (null clears; the domain is stored bare) |
+| POST | `/api/discover` | adds the pasted postings' companies, then discovers → `{ok, failed, duration_s, added}` |
 | POST | `/api/scan` | starts a scan in the background → 202 with its status; 409 while a discover or scan runs |
 | GET | `/api/scan/status` | `{running, boards_done, boards, failed, scored, to_score, duration_s, error}` |
 | GET | `/api/settings/llm` | active provider, model, endpoint, whether its key is set |
@@ -346,7 +356,8 @@ backend/job_board/
     scan.py                   Scan orchestrator + CLI
     scan_job.py               background scan with progress
     rescore_job.py            background Re-score all with progress
-  boards/                   BoardLinkFinder, CareersSiteFinder, WorkdayTenantProbe, one BoardSource per platform
+  boards/                   BoardLinkFinder, CareersSiteFinder, WorkdayTenantProbe, PostingCompanyFinder (a pasted
+                            posting's company from its link), one BoardSource per platform
                             (Greenhouse, Lever, Ashby, Comeet, Workday, Eightfold, HiBob, Google, Microsoft, Apple,
                             Amazon, Meta)
   utils/                    HTTP client, CV text from .pdf/.docx/.md/.txt, job URL normalizing, JSON narrowing,
@@ -367,7 +378,7 @@ frontend/src/               Vite + TypeScript, no framework
     filter-bar.ts             search, location, company/source pickers, min-fit slider, Clear
     filter-url.ts             filter <-> URL query and localStorage
     archive-view.ts           keyword and location rejects with reason, Re-open, Purge rejects
-    companies-view.ts         companies table, Add company, Discover, Scan with progress
+    companies-view.ts         companies table (domain and careers URL edited in place), Add company, Discover, Scan
     profile-view.ts           location + fully remote, job titles, targets, CV drop zone and text, Re-score all
     settings-view.ts          LLM provider drop-down, Test button
   panels/                   what the right-hand panel shows

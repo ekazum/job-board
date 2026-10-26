@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 from fastapi import APIRouter, HTTPException, status
 
-from job_board.models.run_summary import RunSummary
+from job_board.models.discover_summary import DiscoverSummary
 from job_board.models.scan_status import ScanStatus
 from job_board.runs.discover import Discover
 from job_board.runs.scan import Scan
@@ -17,8 +17,8 @@ BUSY_RESPONSE: dict[int | str, dict[str, object]] = {
 
 
 class RunRoutes:
-    """POST /api/discover answers {ok, failed, duration_s} when the run is done; POST /api/scan starts a scan in the
-    background (202) and GET /api/scan/status reports how far it has got.
+    """POST /api/discover answers {ok, failed, duration_s, added} when the run is done; POST /api/scan starts a scan in
+    the background (202) and GET /api/scan/status reports how far it has got.
 
     Runs are async, so the board keeps answering while one is in progress; only one runs at a time and a second
     request gets 409. Each run is built fresh by its factory, so edits to config.yaml apply without a restart.
@@ -39,8 +39,8 @@ class RunRoutes:
         router.add_api_route("/scan/status", self.scan_status, methods=["GET"])
         return router
 
-    async def run_discover(self) -> RunSummary:
-        """Discover the careers platform of every company."""
+    async def run_discover(self) -> DiscoverSummary:
+        """Add the companies of pasted postings to the list, then discover the careers platform of every company."""
         if self._lock.locked() or self._scan_job.running:
             raise self._busy()
         async with self._lock:

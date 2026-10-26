@@ -31,7 +31,8 @@ providers:
 
 # Companies to discover. domain is required; careers_url is optional and fetched before
 # https://<domain>/careers, /jobs and /join-us. Edits apply on the next Discover/Scan, no restart needed.
-# Companies added in the UI (with a domain) are discovered too; this list wins when both have the same name.
+# Companies added in the UI, and those of jobs you paste (Discover adds them), are discovered too; this list wins when
+# both have the same name.
 companies:
   - {name: Wix, domain: wix.com, careers_url: "https://careers.wix.com/"}
   - {name: monday.com, domain: monday.com, careers_url: "https://monday.com/careers"}

@@ -27,7 +27,7 @@ class CareersSiteFinder:
     @staticmethod
     def find(seed: CompanySeed) -> BoardRef | None:
         """The company's own careers site, or None for everyone else."""
-        hosts = [seed.domain.lower()]
+        hosts = [seed.domain.lower()] if seed.domain else []
         if seed.careers_url:
             hosts.append((urlsplit(seed.careers_url).hostname or "").lower())
         for host in hosts:
